@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <path d="M220 360l260-180" stroke="#7f93a3" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="520" cy="154" r="58" fill="#dfe8ef" stroke="#7f93a3" stroke-width="10"/>
+  <circle cx="520" cy="154" r="24" fill="#ffffff" stroke="#7f93a3" stroke-width="8"/>
+  <rect x="148" y="342" width="140" height="58" rx="20" transform="rotate(-35 218 371)" fill="#b9c9d5" stroke="#7f93a3" stroke-width="8"/>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Torque wrench</text>
+</svg>

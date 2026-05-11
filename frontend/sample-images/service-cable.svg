@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <path d="M210 310c70-120 230-120 300-10 45 72 136 42 160-24" fill="none" stroke="#7f93a3" stroke-width="24" stroke-linecap="round"/>
+  <rect x="145" y="274" width="96" height="72" rx="20" fill="#dfe8ef" stroke="#7f93a3" stroke-width="8"/>
+  <rect x="605" y="234" width="94" height="72" rx="20" fill="#dfe8ef" stroke="#7f93a3" stroke-width="8"/>
+  <rect x="164" y="294" width="58" height="32" rx="10" fill="#ffffff"/>
+  <rect x="624" y="254" width="56" height="32" rx="10" fill="#ffffff"/>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Service cable</text>
+</svg>

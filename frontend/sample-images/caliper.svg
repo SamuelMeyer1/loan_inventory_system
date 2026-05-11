@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <rect x="170" y="275" width="430" height="36" rx="8" fill="#dfe8ef" stroke="#8fa5b6" stroke-width="8"/>
+  <rect x="250" y="220" width="135" height="150" rx="18" fill="#ffffff" stroke="#8fa5b6" stroke-width="8"/>
+  <path d="M170 275v-90h62M170 311v90h62M600 275v-70h44M600 311v70h44" fill="none" stroke="#8fa5b6" stroke-width="16" stroke-linecap="round"/>
+  <rect x="276" y="258" width="82" height="44" rx="8" fill="#eef3f7" stroke="#b9c9d5" stroke-width="5"/>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Digital caliper</text>
+</svg>

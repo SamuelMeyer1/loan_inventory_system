@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <rect x="185" y="235" width="160" height="110" rx="20" fill="#dfe8ef" stroke="#8fa5b6" stroke-width="9"/>
+  <rect x="345" y="260" width="110" height="60" fill="#b9c9d5" stroke="#8fa5b6" stroke-width="8"/>
+  <rect x="455" y="235" width="160" height="110" rx="20" fill="#dfe8ef" stroke="#8fa5b6" stroke-width="9"/>
+  <path d="M220 235v110M258 235v110M542 235v110M580 235v110" stroke="#ffffff" stroke-width="8"/>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Pneumatic adapter</text>
+</svg>

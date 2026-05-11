@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <rect x="230" y="190" width="220" height="160" rx="28" fill="#dfe8ef" stroke="#91a6b6" stroke-width="10"/>
+  <rect x="445" y="240" width="120" height="60" rx="18" fill="#b9c9d5" stroke="#7d93a4" stroke-width="8"/>
+  <rect x="560" y="252" width="90" height="36" rx="12" fill="#eef3f7" stroke="#7d93a4" stroke-width="7"/>
+  <circle cx="300" cy="270" r="38" fill="#ffffff" stroke="#7d93a4" stroke-width="8"/>
+  <path d="M284 270h32M300 254v32" stroke="#2f6f8f" stroke-width="8" stroke-linecap="round"/>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Pressure sensor</text>
+</svg>

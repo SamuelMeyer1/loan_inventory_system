@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <rect x="170" y="250" width="420" height="92" rx="46" fill="#dfe8ef" stroke="#8fa5b6" stroke-width="10"/>
+  <rect x="590" y="270" width="82" height="52" rx="14" fill="#c4d1db" stroke="#8fa5b6" stroke-width="8"/>
+  <rect x="118" y="270" width="80" height="52" rx="16" fill="#ffffff" stroke="#8fa5b6" stroke-width="8"/>
+  <path d="M238 252v88M290 252v88M342 252v88" stroke="#b3c2ce" stroke-width="6"/>
+  <circle cx="532" cy="296" r="16" fill="#2f6f8f"/>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Inductive sensor</text>
+</svg>

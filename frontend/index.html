@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Loan Inventory System</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">ELLAB</div>
+          <div class="brand-title">Inventory</div>
+          <div class="brand-subtitle">Utlåning och lager</div>
+        </div>
+        <nav class="nav" aria-label="Huvudnavigation">
+          <button class="nav-button active" data-view="dashboard" data-roles="operator,admin,superadmin">Dashboard</button>
+          <button class="nav-button" data-view="checkout" data-roles="operator,admin,superadmin">Låna</button>
+          <button class="nav-button" data-view="return" data-roles="operator,admin,superadmin">Lämna tillbaka</button>
+          <button class="nav-button" data-view="objects" data-roles="operator,admin,superadmin">Objekt</button>
+          <button class="nav-button" data-view="statistics" data-roles="operator,admin,superadmin">Statistik</button>
+          <button class="nav-button" data-view="jobs" data-roles="operator,admin,superadmin">Jobb</button>
+          <button class="nav-button" data-view="loans" data-roles="admin,superadmin">Aktiva lån</button>
+          <button class="nav-button" data-view="admin" data-roles="admin,superadmin">Admin</button>
+          <button class="nav-button" data-view="log" data-roles="admin,superadmin">Logg</button>
+          <button class="nav-button" data-view="system" data-roles="superadmin">System</button>
+        </nav>
+        <div class="sidebar-footer">Lokal HTML-prototyp</div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-title" id="topbarTitle">Dashboard</div>
+          <div class="topbar-actions">
+            <button class="search-open-button" id="openSearchButton" type="button">Sök</button>
+            <div class="language-toggle" aria-label="Språk">
+              <button class="language-button active" type="button" data-language="sv">SV</button>
+              <button class="language-button" type="button" data-language="en">EN</button>
+            </div>
+            <label class="role-picker">
+              Roll
+              <select id="roleSelect">
+                <option value="operator">Operatör</option>
+                <option value="admin">Admin</option>
+                <option value="superadmin">SuperAdmin</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboardView">
+          <h1>Dashboard</h1>
+          <div class="dashboard-grid">
+            <section class="dashboard-command-panel" aria-label="Snabbval">
+              <button class="dashboard-command-button" type="button" data-view-target="checkout">LÅNA</button>
+              <button class="dashboard-command-button" type="button" data-view-target="return">LÄMNA TILLBAKA</button>
+              <button class="dashboard-command-button" type="button" data-dashboard-focus="consumable">ANMÄL SLUT AV FÖRBRUKNINGSVARA</button>
+            </section>
+            <section class="dashboard-panel dashboard-guide-panel">
+              <div class="dashboard-guide-track" id="dashboardGuideTrack">
+                <article class="dashboard-guide-slide">
+                  <span>1</span>
+                  <strong>Sök fram dig själv</strong>
+                  <p>Välj användare med namn, alias eller e-post.</p>
+                </article>
+                <article class="dashboard-guide-slide">
+                  <span>2</span>
+                  <strong>Välj objekt</strong>
+                  <p>Sök artikel, instrument-ID eller plats och kontrollera saldo.</p>
+                </article>
+                <article class="dashboard-guide-slide">
+                  <span>3</span>
+                  <strong>Skicka förfrågan</strong>
+                  <p>Ange datum, antal och projekt. Jobbet hamnar på Jobb-sidan.</p>
+                </article>
+              </div>
+              <div class="dashboard-guide-dots" id="dashboardGuideDots"></div>
+            </section>
+            <section class="dashboard-panel dashboard-my-loans-panel">
+              <div class="section-title-row">
+                <h2>Mina utlåningar</h2>
+              </div>
+              <div class="dashboard-loans-list" id="dashboardLoansList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="statisticsView">
+          <h1>Statistik</h1>
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span>Antal objekt</span>
+              <strong id="objectsStat">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Utlånade objekt</span>
+              <strong id="loanedStat">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Sena lån</span>
+              <strong id="overdueStat">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Låg nivå</span>
+              <strong id="lowStockStat">0</strong>
+            </article>
+          </div>
+          <div class="charts-row">
+            <div class="chart-container">
+              <div class="chart-title">Objektstatus</div>
+              <canvas id="statusChart"></canvas>
+            </div>
+
+            <div class="chart-container">
+              <div class="chart-title">Lånade per månad</div>
+              <canvas id="loansPerMonthChart"></canvas>
+            </div>
+          </div>
+
+        </section>
+
+        <section class="view" id="checkoutView">
+          <h1>Låna</h1>
+          <form class="form-grid" id="checkoutForm">
+            <div class="checkout-action-row">
+              <span>Saknas användaren?</span>
+              <button class="link-button" id="openQuickUserButton" type="button">Skapa användare</button>
+            </div>
+            <label class="suggestion-field">
+              Sök användare
+              <input id="checkoutUserSearch" placeholder="Namn, alias, e-post eller avdelning" autocomplete="off">
+              <input id="checkoutUser" type="hidden">
+              <div class="inline-suggestions" id="checkoutUserSuggestions"></div>
+            </label>
+            <div class="selected-user-details" id="checkoutUserDetails">
+              <label>
+                Företag
+                <input id="checkoutUserCompany" readonly>
+              </label>
+              <label>
+                Grupp
+                <input id="checkoutUserGroup" readonly>
+              </label>
+              <label>
+                Avdelning
+                <input id="checkoutUserDepartment" readonly>
+              </label>
+              <label>
+                E-post
+                <input id="checkoutUserEmail" readonly>
+              </label>
+              <label>
+                Telefon
+                <input id="checkoutUserPhone" readonly>
+              </label>
+              <label>
+                Alias
+                <input id="checkoutUserAlias" readonly>
+              </label>
+            </div>
+            <label class="suggestion-field">
+              Sök objekt
+              <input id="checkoutObjectId" placeholder="Objekt-ID eller QR-ID, t.ex. OBJ-1001" autocomplete="off">
+              <div class="inline-suggestions" id="checkoutObjectSuggestions"></div>
+            </label>
+            <label>
+              Lagerfilter
+              <select id="checkoutStockFilter">
+                <option value="in_stock">I lager</option>
+                <option value="low_stock">Låg nivå</option>
+                <option value="out_of_stock">Slut</option>
+                <option value="all">Alla objekt</option>
+              </select>
+            </label>
+            <div class="selected-object-details" id="checkoutInfo">
+              <label>
+                Namn
+                <input id="checkoutObjectName" readonly>
+              </label>
+              <label>
+                Instrument ID
+                <input id="checkoutObjectInstrumentId" readonly>
+              </label>
+              <label>
+                Kategori
+                <input id="checkoutObjectCategory" readonly>
+              </label>
+              <label>
+                Typ
+                <input id="checkoutObjectType" readonly>
+              </label>
+              <label>
+                Beteckning
+                <input id="checkoutObjectDescription" readonly>
+              </label>
+              <label>
+                Plats
+                <input id="checkoutObjectLocation" readonly>
+              </label>
+              <label>
+                Hiss
+                <input id="checkoutObjectLift" readonly>
+              </label>
+              <label>
+                Antal i lager
+                <input id="checkoutObjectQuantity" readonly>
+              </label>
+              <label>
+                Status
+                <input id="checkoutObjectStatus" readonly>
+              </label>
+            </div>
+            <div class="checkout-loan-details">
+              <label>
+                Engine ID
+                <input id="checkoutEngineId" placeholder="Engine ID" autocomplete="off">
+              </label>
+              <label>
+                Project Number
+                <input id="checkoutProjectNumber" placeholder="Project number" autocomplete="off">
+              </label>
+              <label>
+                Antal
+                <input id="checkoutQuantity" type="number" min="1" value="1">
+              </label>
+            </div>
+            <div class="checkout-date-details">
+              <label>
+                Lending date
+                <input id="checkoutLendingDate" type="date">
+              </label>
+              <label>
+                Return date
+                <input id="checkoutDue" type="date">
+              </label>
+            </div>
+          </form>
+          <div class="checkout-submit-actions">
+            <button class="secondary-button" id="requestLoanButton" type="button">Skicka låneförfrågan</button>
+          </div>
+        </section>
+
+        <section class="view" id="returnView">
+          <h1>Lämna tillbaka</h1>
+          <div class="filters return-filters">
+            <label class="suggestion-field">
+              Sök användare
+              <input id="returnUserSearch" placeholder="Sök på namn, alias, e-post eller avdelning" autocomplete="off">
+              <input id="returnUser" type="hidden">
+              <div class="inline-suggestions" id="returnUserSuggestions"></div>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Lån-ID</th><th>Objekt</th><th>Borrower</th><th>Dept no</th><th>Engine ID</th><th>Project no</th><th>Antal</th><th>Lending date</th><th>Return date</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="returnLoansBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="returnLoansEmpty">Sök på ditt namn för att se aktiva utlåningar.</div>
+        </section>
+
+        <section class="view" id="objectsView">
+          <h1>Objekt</h1>
+          <div class="filters">
+            <input id="objectSearch" placeholder="Sök på objekt, artikelnummer, leverantörsartikel, sökord eller plats">
+            <select id="categoryFilter"></select>
+            <select id="statusFilter"></select>
+          </div>
+          <div class="table-wrap">
+            <table class="objects-table">
+              <thead>
+                <tr>
+                  <th>Bild</th><th>Kategori</th><th>Typ</th><th>Beteckning</th><th>Volvoid/Artikelnummer</th>
+                  <th>Namn</th><th>Leverantörens art.</th><th>Saldo</th><th>Beställningspunkt</th>
+                  <th>Lagerplats</th><th>Förråd</th><th>Tillhör instrument</th><th>Device</th>
+                  <th>Tillhör</th><th>Senast ändrad</th><th>Sök ord</th><th>Ligger på bricka för</th>
+                  <th>Lagerplats 2</th><th>Hissbricka</th><th>Status</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="objectsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="loansView">
+          <h1>Aktiva lån</h1>
+          <div class="filters loans-filters">
+            <input id="loanSearch" placeholder="Filtrera på lån, objekt, låntagare, avdelning, Engine ID eller Project no" autocomplete="off">
+            <select id="loanStatusFilter">
+              <option value="all">Alla statusar</option>
+              <option value="active">Aktiva</option>
+              <option value="overdue">Sena</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Lån-ID</th><th>Instrument ID</th><th>Objekt</th><th>Borrower</th><th>Dept no</th><th>Engine ID</th><th>Project no</th><th>Antal</th><th>Lending date</th><th>Return date</th><th>Status</th><th>Kvitto</th></tr>
+              </thead>
+              <tbody id="loansBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="jobsView">
+          <h1>Jobb</h1>
+          <div class="filters jobs-filters">
+            <input id="jobSearch" placeholder="Filtrera på jobb, objekt, låntagare, avdelning, Engine ID eller Project no" autocomplete="off">
+            <select id="jobStatusFilter">
+              <option value="all">Alla statusar</option>
+              <option value="requested">Request</option>
+              <option value="prepared">Ready for pickup</option>
+              <option value="loaned">Lånad</option>
+              <option value="returned">Återlämnad</option>
+              <option value="stocked">Lagerförd</option>
+            </select>
+            <select id="jobDateSort">
+              <option value="updated_desc">Senast ändrad först</option>
+              <option value="lending_asc">Utlåningsdatum stigande</option>
+              <option value="return_asc">Returdatum stigande</option>
+              <option value="created_desc">Skapad senast först</option>
+            </select>
+          </div>
+          <div class="jobs-board" id="jobsBoard"></div>
+        </section>
+
+        <section class="view" id="adminView">
+          <h1>Admin</h1>
+          <div class="admin-settings-layout">
+            <aside class="admin-settings-nav" aria-label="Admininställningar">
+              <button class="admin-settings-nav-button active" type="button" data-admin-section="add-object">Lägg till objekt</button>
+              <button class="admin-settings-nav-button" type="button" data-admin-section="create-user">Skapa användare</button>
+              <button class="admin-settings-nav-button" type="button" data-admin-section="users">Användare</button>
+              <button class="admin-settings-nav-button" type="button" data-admin-section="objects">Objekt</button>
+            </aside>
+            <div class="admin-settings-content">
+            <form class="admin-card admin-settings-panel active" id="addObjectForm" data-admin-panel="add-object">
+              <h2 id="objectFormTitle">Lägg till objekt</h2>
+              <div class="admin-form-grid">
+                <label>
+                  Objekt-ID
+                  <input id="newObjectId" placeholder="OBJ-1009" autocomplete="off" required>
+                </label>
+                <label>
+                  Namn
+                  <input id="newObjectName" placeholder="Tryckgivare 0-16 bar" autocomplete="off" required>
+                </label>
+                <label>
+                  Kategori
+                  <input id="newObjectCategory" placeholder="Sensor" autocomplete="off" required>
+                </label>
+                <label>
+                  Typ
+                  <input id="newObjectType" placeholder="Datalogger" autocomplete="off">
+                </label>
+                <label>
+                  Beteckning
+                  <input id="newObjectDescription" placeholder="Tryckgivare 0-16 bar" autocomplete="off">
+                </label>
+                <label>
+                  Volvoid/Artikelnummer
+                  <input id="newObjectArticle" placeholder="PRS-016B" autocomplete="off">
+                </label>
+                <label>
+                  Leverantörens artikelnummer
+                  <input id="newObjectSupplierArticle" placeholder="Leverantörens art.nr" autocomplete="off">
+                </label>
+                <label>
+                  Plats
+                  <input id="newObjectLocation" placeholder="Tornado C / Fack 8" autocomplete="off" required>
+                </label>
+                <label>
+                  Lagerplats 2
+                  <input id="newObjectStorageLocation2" placeholder="H1001" autocomplete="off">
+                </label>
+                <label>
+                  Förråd
+                  <input id="newObjectTornado" placeholder="Tornado C" autocomplete="off" required>
+                </label>
+                <label>
+                  Hissbricka/dörr/fack
+                  <input id="newObjectDoor" placeholder="8" autocomplete="off" required>
+                </label>
+                <label>
+                  Tillhör instrument
+                  <input id="newObjectBelongsToInstrument" autocomplete="off">
+                </label>
+                <label>
+                  Device
+                  <input id="newObjectDevice" autocomplete="off">
+                </label>
+                <label>
+                  Tillhör
+                  <input id="newObjectBelongsTo" autocomplete="off">
+                </label>
+                <label>
+                  Senast ändrad
+                  <input id="newObjectLastChanged" type="date">
+                </label>
+                <label>
+                  Sök ord
+                  <input id="newObjectSearchWords" autocomplete="off">
+                </label>
+                <label>
+                  Ligger på bricka för
+                  <input id="newObjectTrayFor" autocomplete="off">
+                </label>
+                <label>
+                  Hissbricka
+                  <input id="newObjectLiftTray" autocomplete="off">
+                </label>
+                <label>
+                  Totalt antal
+                  <input id="newObjectTotal" type="number" min="0" value="1" required>
+                </label>
+                <label>
+                  Tillgängligt antal
+                  <input id="newObjectAvailable" type="number" min="0" value="1" required>
+                </label>
+                <label>
+                  Min-nivå
+                  <input id="newObjectMin" type="number" min="0" value="1" required>
+                </label>
+              </div>
+              <label class="image-upload">
+                Bild
+                <input id="newObjectImage" type="file" accept="image/*">
+                <span>Välj en bild på objektet. Den sparas lokalt i SQLite.</span>
+              </label>
+              <div class="image-preview" id="newObjectImagePreview">
+                <span>Ingen bild vald</span>
+              </div>
+              <label class="checkbox-row">
+                <input id="removeObjectImage" type="checkbox">
+                Ta bort befintlig bild
+              </label>
+              <div class="form-actions">
+                <button class="secondary-button" id="cancelObjectEditButton" type="button">Avbryt</button>
+                <button class="primary-button" id="saveObjectButton" type="submit">Spara objekt</button>
+              </div>
+            </form>
+
+            <section class="admin-card admin-settings-panel" data-admin-panel="create-user">
+              <h2>Skapa användare</h2>
+              <form id="addUserForm">
+                <div class="admin-form-grid">
+                  <label>
+                    Förnamn
+                    <input id="newUserFirstName" placeholder="Samuel" autocomplete="given-name" required>
+                  </label>
+                  <label>
+                    Efternamn
+                    <input id="newUserLastName" placeholder="Meyer" autocomplete="family-name" required>
+                  </label>
+                  <label>
+                    E-postadress
+                    <input id="newUserEmail" type="email" placeholder="samuel.meyer@example.com" autocomplete="email">
+                  </label>
+                  <label>
+                    Telefonnummer
+                    <input id="newUserPhone" placeholder="+46..." autocomplete="tel">
+                  </label>
+                  <label>
+                    Företag
+                    <input id="newUserCompany" placeholder="ELLAB" autocomplete="organization">
+                  </label>
+                  <label>
+                    Alias
+                    <input id="newUserAlias" placeholder="A123456" autocomplete="off">
+                  </label>
+                  <label>
+                    Avdelning
+                    <input id="newUserDepartment" placeholder="Automation" autocomplete="organization-title">
+                  </label>
+                  <label>
+                    Department name
+                    <input id="newUserDepartmentName" placeholder="Automation DK" autocomplete="off">
+                  </label>
+                  <label>
+                    Roll
+                    <select id="newUserRole">
+                      <option value="operator">Operatör</option>
+                      <option value="admin">Admin</option>
+                      <option value="superadmin">SuperAdmin</option>
+                    </select>
+                  </label>
+                  <label class="checkbox-row">
+                    <input id="newUserActive" type="checkbox" checked>
+                    Aktiv användare
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button class="secondary-button" id="cancelUserEditButton" type="button">Avbryt</button>
+                  <button class="primary-button" id="saveUserButton" type="submit">Skapa användare</button>
+                </div>
+              </form>
+
+            </section>
+
+            <section class="admin-card admin-settings-panel" data-admin-panel="users">
+              <h2 class="admin-subtitle">Användare</h2>
+              <div class="table-wrap compact-table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Namn</th><th>Alias</th><th>E-post</th><th>Telefon</th><th>Företag</th><th>Avdelning</th><th>Roll</th><th></th></tr>
+                  </thead>
+                  <tbody id="usersBody"></tbody>
+                </table>
+              </div>
+            </section>
+            
+            <section class="admin-card admin-settings-panel" data-admin-panel="objects">
+              <h2>Objekt</h2>
+              <div class="table-wrap compact-table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Objekt-ID</th><th>Namn</th><th>Kategori</th><th>Saldo</th><th>Status</th><th></th></tr>
+                  </thead>
+                  <tbody id="adminObjectsBody"></tbody>
+                </table>
+              </div>
+            </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="logView">
+          <h1>Logg</h1>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Tid</th><th>Typ</th><th>Meddelande</th></tr>
+              </thead>
+              <tbody id="eventsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="systemView">
+          <h1>System</h1>
+          <div class="system-settings-layout">
+            <aside class="system-settings-nav" aria-label="Systeminställningar">
+              <button class="system-settings-nav-button active" type="button" data-system-section="general">Allmänt</button>
+              <button class="system-settings-nav-button" type="button" data-system-section="modbus">Modbus / PLC</button>
+              <button class="system-settings-nav-button" type="button" data-system-section="smtp">SMTP & notiser</button>
+              <button class="system-settings-nav-button" type="button" data-system-section="automation">Jobb & automation</button>
+            </aside>
+            <form class="system-settings-form" id="systemSettingsForm">
+            <section class="admin-card system-settings-panel" data-system-panel="modbus">
+              <div class="section-title-row">
+                <h2>Modbus till PLC</h2>
+                <label class="checkbox-row">
+                  <input id="modbusEnabled" type="checkbox">
+                  Aktiv
+                </label>
+              </div>
+              <div class="admin-form-grid">
+                <label>
+                  PLC host/IP
+                  <input id="modbusHost" placeholder="192.168.0.10" autocomplete="off">
+                </label>
+                <label>
+                  Port
+                  <input id="modbusPort" type="number" min="1" max="65535" value="502">
+                </label>
+                <label>
+                  Unit ID
+                  <input id="modbusUnitId" type="number" min="1" max="255" value="1">
+                </label>
+                <label>
+                  Startregister
+                  <input id="modbusRegisterStart" placeholder="40001" autocomplete="off">
+                </label>
+              </div>
+            </section>
+
+            <section class="admin-card system-settings-panel" data-system-panel="smtp">
+              <div class="section-title-row">
+                <h2>SMTP och notifikationer</h2>
+                <label class="checkbox-row">
+                  <input id="smtpEnabled" type="checkbox">
+                  Aktiv
+                </label>
+              </div>
+              <div class="admin-form-grid">
+                <label>
+                  SMTP host
+                  <input id="smtpHost" placeholder="smtp.example.com" autocomplete="off">
+                </label>
+                <label>
+                  Port
+                  <input id="smtpPort" type="number" min="1" max="65535" value="587">
+                </label>
+                <label>
+                  Användarnamn
+                  <input id="smtpUsername" autocomplete="off">
+                </label>
+                <label>
+                  Lösenord
+                  <input id="smtpPassword" type="password" autocomplete="new-password" placeholder="Lämna tomt för att behålla">
+                </label>
+                <label>
+                  Från-adress
+                  <input id="smtpFromAddress" type="email" placeholder="inventory@example.com" autocomplete="email">
+                </label>
+                <label class="checkbox-row">
+                  <input id="smtpUseTls" type="checkbox" checked>
+                  Använd STARTTLS
+                </label>
+                <label class="wide-field">
+                  Mottagare
+                  <textarea id="notificationRecipients" rows="3" placeholder="namn@example.com, drift@example.com"></textarea>
+                </label>
+                <label>
+                  Påminn före retur
+                  <input id="loanReminderDays" type="number" min="0" max="30" value="1">
+                </label>
+                <label class="checkbox-row">
+                  <input id="notifyNewJob" type="checkbox">
+                  Nytt jobb
+                </label>
+                <label class="checkbox-row">
+                  <input id="notifyLowStock" type="checkbox">
+                  Låg lagernivå
+                </label>
+                <label class="checkbox-row">
+                  <input id="notifyLoanReminders" type="checkbox">
+                  Lånepåminnelser
+                </label>
+              </div>
+            </section>
+
+              <div class="system-settings-panel reminder-panel" data-system-panel="smtp">
+                <button class="secondary-button reminder-send-button" id="sendRemindersButton" type="button">Skicka påminnelser nu</button>
+              </div>
+            <section class="admin-card system-settings-panel" data-system-panel="automation">
+              <div class="section-title-row">
+                <div>
+                  <h2>Jobb & automation</h2>
+                  <p class="system-settings-description">Regler för notiser när nya jobb skapas och lagernivåer behöver åtgärdas.</p>
+                </div>
+              </div>
+              <div class="settings-option-list">
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid nytt jobb</strong>
+                    <small>När en operatör begär lån skapas jobb och berörd personal får meddelande.</small>
+                  </span>
+                  <input id="notifyNewJobAutomation" type="checkbox">
+                </label>
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid låg lagernivå</strong>
+                    <small>Gäller när saldo når eller passerar beställningspunkt.</small>
+                  </span>
+                  <input id="notifyLowStockAutomation" type="checkbox">
+                </label>
+              </div>
+            </section>
+
+            <section class="admin-card system-settings-panel active" data-system-panel="general">
+              <div class="section-title-row">
+                <div>
+                  <h2>Allmänt</h2>
+                  <p class="system-settings-description">Övergripande status och plats för fler systeminställningar senare.</p>
+                </div>
+              </div>
+              <div class="settings-summary-grid">
+                <div class="settings-summary-item">
+                  <span>Aktiv SMTP</span>
+                  <strong id="smtpSummary">Nej</strong>
+                </div>
+                <div class="settings-summary-item">
+                  <span>Aktiv Modbus</span>
+                  <strong id="modbusSummary">Nej</strong>
+                </div>
+                <div class="settings-summary-item">
+                  <span>Rollnivå</span>
+                  <strong>SuperAdmin</strong>
+                </div>
+              </div>
+            </section>
+
+            <div class="system-settings-actions">
+              <button class="primary-button" type="submit">Spara systeminställningar</button>
+            </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <section class="print-receipt" id="printReceipt" aria-hidden="true"></section>
+    <datalist id="departmentNameList"></datalist>
+
+    <div class="modal-layer" id="jobDetailModal" aria-hidden="true">
+      <div class="modal-backdrop" id="jobDetailBackdrop"></div>
+      <section class="modal-panel job-detail-panel" role="dialog" aria-modal="true" aria-labelledby="jobDetailTitle">
+        <div class="modal-header">
+          <h2 id="jobDetailTitle">Jobb</h2>
+          <div class="modal-actions">
+            <button class="secondary-button" id="exportJobExcelButton" type="button">Export Excel</button>
+            <button class="secondary-button" id="printJobButton" type="button">Skriv ut/PDF</button>
+            <button class="search-clear-button" id="closeJobDetailButton" type="button" aria-label="Stäng">×</button>
+          </div>
+        </div>
+        <div id="jobDetailContent"></div>
+      </section>
+    </div>
+
+    <div class="modal-layer" id="quickUserModal" aria-hidden="true">
+      <div class="modal-backdrop" id="quickUserBackdrop"></div>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="quickUserTitle">
+        <div class="modal-header">
+          <h2 id="quickUserTitle">Skapa användare</h2>
+          <button class="search-clear-button" id="closeQuickUserButton" type="button" aria-label="Stäng">×</button>
+        </div>
+        <form class="quick-user-form" id="quickUserForm">
+          <div class="admin-form-grid">
+            <label>
+              Förnamn
+              <input id="quickUserFirstName" placeholder="Adam" autocomplete="given-name" required>
+            </label>
+            <label>
+              Efternamn
+              <input id="quickUserLastName" placeholder="Nilsson" autocomplete="family-name" required>
+            </label>
+            <label>
+              E-postadress
+              <input id="quickUserEmail" type="email" autocomplete="email">
+            </label>
+            <label>
+              Telefonnummer
+              <input id="quickUserPhone" autocomplete="tel">
+            </label>
+            <label>
+              Department name
+              <input id="quickUserDepartmentName" list="departmentNameList" placeholder="CB1234" autocomplete="off">
+            </label>
+            <label>
+              Avdelning
+              <input id="quickUserDepartment" placeholder="test123" autocomplete="organization-title">
+            </label>
+            <label>
+              Företag
+              <input id="quickUserCompany" placeholder="ELLAB" autocomplete="organization">
+            </label>
+            <label>
+              Alias
+              <input id="quickUserAlias" placeholder="A123456" autocomplete="off">
+            </label>
+          </div>
+          <button class="primary-button" type="submit">Skapa och välj användare</button>
+        </form>
+      </section>
+    </div>
+
+    <div class="search-layer" id="searchLayer" aria-hidden="true">
+      <div class="search-backdrop" id="searchBackdrop"></div>
+      <section class="search-panel" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+        <div class="search-bar">
+          <span class="search-icon" aria-hidden="true"></span>
+          <input id="globalSearchInput" placeholder="Sök efter tryckgivare, artikelnummer, plats..." autocomplete="off">
+          <button class="search-clear-button" id="clearSearchButton" type="button" aria-label="Rensa sökning">×</button>
+          <button class="search-submit-button" id="submitSearchButton" type="button">Sök</button>
+          <button class="search-close-button" id="closeSearchButton" type="button">Stäng</button>
+        </div>
+        <div class="search-results">
+          <h2 id="searchTitle">Sökresultat</h2>
+          <div class="search-tabs">
+            <button class="search-tab active" type="button" id="allResultsTab">Alla (0)</button>
+            <button class="search-tab" type="button" id="objectResultsTab">Objekt (0)</button>
+            <button class="search-tab" type="button">Lån</button>
+            <button class="search-tab" type="button">Logg</button>
+          </div>
+          <div class="search-section-title">Objekt</div>
+          <div class="search-grid" id="searchResultsGrid"></div>
+          <div class="search-empty" id="searchEmpty">Skriv något för att söka i inventariet.</div>
+        </div>
+      </section>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="charts.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

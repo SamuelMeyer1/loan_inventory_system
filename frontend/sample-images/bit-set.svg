@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f6f8fb"/>
+  <rect x="190" y="190" width="420" height="190" rx="28" fill="#ffffff" stroke="#d2dde6" stroke-width="8"/>
+  <g fill="#dfe8ef" stroke="#8fa5b6" stroke-width="7">
+    <rect x="235" y="235" width="42" height="95" rx="10"/>
+    <rect x="305" y="215" width="42" height="115" rx="10"/>
+    <rect x="375" y="245" width="42" height="85" rx="10"/>
+    <rect x="445" y="225" width="42" height="105" rx="10"/>
+    <rect x="515" y="238" width="42" height="92" rx="10"/>
+  </g>
+  <text x="400" y="445" text-anchor="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#2f4050">Bit set</text>
+</svg>
