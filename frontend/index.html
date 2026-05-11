@@ -17,10 +17,12 @@
         <nav class="nav" aria-label="Huvudnavigation">
           <button class="nav-button active" data-view="dashboard" data-roles="operator,admin,superadmin">Dashboard</button>
           <button class="nav-button" data-view="checkout" data-roles="operator,admin,superadmin">Låna</button>
+          <button class="nav-button" data-view="consumable" data-roles="operator,admin,superadmin">Anmäl slut av förbrukningsvara</button>
           <button class="nav-button" data-view="return" data-roles="operator,admin,superadmin">Lämna tillbaka</button>
-          <button class="nav-button" data-view="objects" data-roles="operator,admin,superadmin">Objekt</button>
-          <button class="nav-button" data-view="statistics" data-roles="operator,admin,superadmin">Statistik</button>
-          <button class="nav-button" data-view="jobs" data-roles="operator,admin,superadmin">Jobb</button>
+          <button class="nav-button" data-view="myLoans" data-roles="operator,admin,superadmin">Mina utlåningar</button>
+          <button class="nav-button" data-view="objects" data-roles="admin,superadmin">Objekt</button>
+          <button class="nav-button" data-view="statistics" data-roles="admin,superadmin">Statistik</button>
+          <button class="nav-button" data-view="jobs" data-roles="admin,superadmin">Jobb</button>
           <button class="nav-button" data-view="loans" data-roles="admin,superadmin">Aktiva lån</button>
           <button class="nav-button" data-view="admin" data-roles="admin,superadmin">Admin</button>
           <button class="nav-button" data-view="log" data-roles="admin,superadmin">Logg</button>
@@ -31,7 +33,6 @@
 
       <main class="main">
         <header class="topbar">
-          <div class="topbar-title" id="topbarTitle">Dashboard</div>
           <div class="topbar-actions">
             <button class="search-open-button" id="openSearchButton" type="button">Sök</button>
             <div class="language-toggle" aria-label="Språk">
@@ -50,38 +51,24 @@
         </header>
 
         <section class="view active" id="dashboardView">
-          <h1>Dashboard</h1>
           <div class="dashboard-grid">
+            <section class="dashboard-tips-panel" aria-labelledby="dashboardTipsTitle">
+              <div class="section-title-row">
+                <h2 id="dashboardTipsTitle">Tips & tricks</h2>
+                <div class="dashboard-tips-controls">
+                  <button class="dashboard-tips-nav" id="dashboardTipPrev" type="button" aria-label="Föregående tips">&lt;</button>
+                  <button class="dashboard-tips-nav" id="dashboardTipNext" type="button" aria-label="Nästa tips">&gt;</button>
+                </div>
+              </div>
+              <div class="dashboard-tips-slide" id="dashboardTipsSlide"></div>
+              <div class="dashboard-tips-dots" id="dashboardTipsDots"></div>
+            </section>
             <section class="dashboard-command-panel" aria-label="Snabbval">
               <button class="dashboard-command-button" type="button" data-view-target="checkout">LÅNA</button>
+              <button class="dashboard-command-button" type="button" data-view-target="pickup">HÄMTA ARTIKEL</button>
               <button class="dashboard-command-button" type="button" data-view-target="return">LÄMNA TILLBAKA</button>
-              <button class="dashboard-command-button" type="button" data-dashboard-focus="consumable">ANMÄL SLUT AV FÖRBRUKNINGSVARA</button>
-            </section>
-            <section class="dashboard-panel dashboard-guide-panel">
-              <div class="dashboard-guide-track" id="dashboardGuideTrack">
-                <article class="dashboard-guide-slide">
-                  <span>1</span>
-                  <strong>Sök fram dig själv</strong>
-                  <p>Välj användare med namn, alias eller e-post.</p>
-                </article>
-                <article class="dashboard-guide-slide">
-                  <span>2</span>
-                  <strong>Välj objekt</strong>
-                  <p>Sök artikel, instrument-ID eller plats och kontrollera saldo.</p>
-                </article>
-                <article class="dashboard-guide-slide">
-                  <span>3</span>
-                  <strong>Skicka förfrågan</strong>
-                  <p>Ange datum, antal och projekt. Jobbet hamnar på Jobb-sidan.</p>
-                </article>
-              </div>
-              <div class="dashboard-guide-dots" id="dashboardGuideDots"></div>
-            </section>
-            <section class="dashboard-panel dashboard-my-loans-panel">
-              <div class="section-title-row">
-                <h2>Mina utlåningar</h2>
-              </div>
-              <div class="dashboard-loans-list" id="dashboardLoansList"></div>
+              <button class="dashboard-command-button" type="button" data-view-target="consumable">ANMÄL SLUT AV FÖRBRUKNINGSVARA</button>
+              <button class="dashboard-command-button" id="dashboardMyLoansButton" type="button">MINA UTLÅNINGAR</button>
             </section>
           </div>
         </section>
@@ -105,16 +92,35 @@
               <span>Låg nivå</span>
               <strong id="lowStockStat">0</strong>
             </article>
+            <article class="stat-card">
+              <span>Klara att hämta</span>
+              <strong id="readyPickupStat">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Öppna jobb</span>
+              <strong id="openJobsStat">0</strong>
+            </article>
           </div>
-          <div class="charts-row">
+          <div class="statistics-chart-grid">
             <div class="chart-container">
               <div class="chart-title">Objektstatus</div>
               <canvas id="statusChart"></canvas>
             </div>
-
             <div class="chart-container">
-              <div class="chart-title">Lånade per månad</div>
+              <div class="chart-title">Jobbstatus</div>
+              <canvas id="jobStatusChart"></canvas>
+            </div>
+            <div class="chart-container chart-container-wide">
+              <div class="chart-title">Utlåningar per månad</div>
               <canvas id="loansPerMonthChart"></canvas>
+            </div>
+            <div class="chart-container">
+              <div class="chart-title">Returdatum</div>
+              <canvas id="dueBucketsChart"></canvas>
+            </div>
+            <div class="chart-container">
+              <div class="chart-title">Mest utlånat just nu</div>
+              <canvas id="topBorrowersChart"></canvas>
             </div>
           </div>
 
@@ -222,7 +228,7 @@
               </label>
               <label>
                 Antal
-                <input id="checkoutQuantity" type="number" min="1" value="1">
+                <select id="checkoutQuantity" data-number-select data-min="1" data-max="20" data-default="1"></select>
               </label>
             </div>
             <div class="checkout-date-details">
@@ -260,6 +266,81 @@
             </table>
           </div>
           <div class="empty-state" id="returnLoansEmpty">Sök på ditt namn för att se aktiva utlåningar.</div>
+        </section>
+
+        <section class="view" id="pickupView">
+          <h1>Hämta artikel</h1>
+          <div class="filters return-filters">
+            <label class="suggestion-field">
+              Sök användare
+              <input id="pickupUserSearch" placeholder="Sök på namn, alias, e-post eller avdelning" autocomplete="off">
+              <input id="pickupUser" type="hidden">
+              <div class="inline-suggestions" id="pickupUserSuggestions"></div>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Jobb-ID</th><th>Objekt</th><th>Borrower</th><th>Dept no</th><th>Engine ID</th><th>Project no</th><th>Antal</th><th>Lending date</th><th>Return date</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="pickupBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="pickupEmpty">Sök på ditt namn för att se artiklar som är klara att hämta.</div>
+        </section>
+
+        <section class="view" id="myLoansView">
+          <h1>Mina utlåningar</h1>
+          <div class="filters return-filters">
+            <label class="suggestion-field">
+              Sök användare
+              <input id="myLoansUserSearch" placeholder="Sök på namn, alias, e-post eller avdelning" autocomplete="off">
+              <input id="myLoansUser" type="hidden">
+              <div class="inline-suggestions" id="myLoansUserSuggestions"></div>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Lån-ID</th><th>Objekt</th><th>Borrower</th><th>Dept no</th><th>Engine ID</th><th>Project no</th><th>Antal</th><th>Lending date</th><th>Return date</th><th>Dagar kvar</th><th>Status</th></tr>
+              </thead>
+              <tbody id="myLoansBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="myLoansEmpty">Sök på ditt namn för att se dina aktiva utlåningar.</div>
+        </section>
+
+        <section class="view" id="consumableView">
+          <h1>Anmäl slut av förbrukningsvara</h1>
+          <div class="consumable-layout">
+            <form class="admin-card consumable-form" id="consumableReportForm">
+              <label class="suggestion-field">
+                Förbrukningsvara
+                <input id="consumableObjectSearch" placeholder="Sök förbrukningsvara, artikelnummer eller plats" autocomplete="off">
+                <input id="consumableObjectId" type="hidden">
+                <div class="inline-suggestions" id="consumableObjectSuggestions"></div>
+              </label>
+              <label>
+                Antal kvar
+                <select id="consumableQuantity" data-number-select data-min="0" data-max="100" data-default="0"></select>
+              </label>
+              <label>
+                Rapporterad av
+                <input id="consumableReportedBy" placeholder="Namn eller avdelning" autocomplete="off">
+              </label>
+              <label>
+                Kommentar
+                <textarea id="consumableMessage" rows="4" placeholder="Exempel: sista förpackningen är tagen"></textarea>
+              </label>
+              <button class="primary-button" type="submit">Skicka rapport</button>
+            </form>
+            <section class="admin-card">
+              <div class="section-title-row">
+                <h2>Öppna rapporter</h2>
+              </div>
+              <div class="consumable-report-list" id="consumableReportsList"></div>
+            </section>
+          </div>
         </section>
 
         <section class="view" id="objectsView">
@@ -308,6 +389,7 @@
         <section class="view" id="jobsView">
           <h1>Jobb</h1>
           <div class="filters jobs-filters">
+            <button class="secondary-button jobs-collapse-button" id="toggleJobsCollapsed" type="button" aria-pressed="false">Dölj jobb</button>
             <input id="jobSearch" placeholder="Filtrera på jobb, objekt, låntagare, avdelning, Engine ID eller Project no" autocomplete="off">
             <select id="jobStatusFilter">
               <option value="all">Alla statusar</option>
@@ -331,13 +413,14 @@
           <h1>Admin</h1>
           <div class="admin-settings-layout">
             <aside class="admin-settings-nav" aria-label="Admininställningar">
-              <button class="admin-settings-nav-button active" type="button" data-admin-section="add-object">Lägg till objekt</button>
+              <button class="admin-settings-nav-button active" type="button" data-admin-section="settings">Inställningar</button>
+              <button class="admin-settings-nav-button" type="button" data-admin-section="add-object">Lägg till objekt</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="create-user">Skapa användare</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="users">Användare</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="objects">Objekt</button>
             </aside>
             <div class="admin-settings-content">
-            <form class="admin-card admin-settings-panel active" id="addObjectForm" data-admin-panel="add-object">
+            <form class="admin-card admin-settings-panel" id="addObjectForm" data-admin-panel="add-object">
               <h2 id="objectFormTitle">Lägg till objekt</h2>
               <div class="admin-form-grid">
                 <label>
@@ -414,15 +497,15 @@
                 </label>
                 <label>
                   Totalt antal
-                  <input id="newObjectTotal" type="number" min="0" value="1" required>
+                  <select id="newObjectTotal" data-number-select data-min="0" data-max="100" data-default="1" required></select>
                 </label>
                 <label>
                   Tillgängligt antal
-                  <input id="newObjectAvailable" type="number" min="0" value="1" required>
+                  <select id="newObjectAvailable" data-number-select data-min="0" data-max="100" data-default="1" required></select>
                 </label>
                 <label>
                   Min-nivå
-                  <input id="newObjectMin" type="number" min="0" value="1" required>
+                  <select id="newObjectMin" data-number-select data-min="0" data-max="50" data-default="1" required></select>
                 </label>
               </div>
               <label class="image-upload">
@@ -433,6 +516,10 @@
               <div class="image-preview" id="newObjectImagePreview">
                 <span>Ingen bild vald</span>
               </div>
+              <label class="checkbox-row">
+                <input id="newObjectConsumable" type="checkbox">
+                Förbrukningsvara, ej utlåning
+              </label>
               <label class="checkbox-row">
                 <input id="removeObjectImage" type="checkbox">
                 Ta bort befintlig bild
@@ -500,9 +587,9 @@
 
             </section>
 
-            <section class="admin-card admin-settings-panel" data-admin-panel="users">
+            <section class="admin-card admin-settings-panel admin-list-panel" data-admin-panel="users">
               <h2 class="admin-subtitle">Användare</h2>
-              <div class="table-wrap compact-table-wrap">
+              <div class="table-wrap compact-table-wrap admin-list-table-wrap">
                 <table>
                   <thead>
                     <tr><th>Namn</th><th>Alias</th><th>E-post</th><th>Telefon</th><th>Företag</th><th>Avdelning</th><th>Roll</th><th></th></tr>
@@ -512,15 +599,168 @@
               </div>
             </section>
             
-            <section class="admin-card admin-settings-panel" data-admin-panel="objects">
+            <section class="admin-card admin-settings-panel admin-list-panel" data-admin-panel="objects">
               <h2>Objekt</h2>
-              <div class="table-wrap compact-table-wrap">
+              <div class="table-wrap compact-table-wrap admin-list-table-wrap">
                 <table>
                   <thead>
                     <tr><th>Objekt-ID</th><th>Namn</th><th>Kategori</th><th>Saldo</th><th>Status</th><th></th></tr>
                   </thead>
                   <tbody id="adminObjectsBody"></tbody>
                 </table>
+              </div>
+            </section>
+
+            <section class="admin-card admin-settings-panel active" data-admin-panel="settings">
+              <div class="section-title-row">
+                <div>
+                  <h2>Inställningar</h2>
+                  <p class="system-settings-description">Regler för jobbnotiser, lagerlarm och påminnelser.</p>
+                </div>
+              </div>
+              <div class="settings-option-list">
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid nytt jobb</strong>
+                    <small>När en operatör begär lån skapas jobb och berörd personal får meddelande.</small>
+                  </span>
+                  <input id="notifyNewJobAutomation" type="checkbox">
+                </label>
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid tillbaka lämnad låning</strong>
+                    <small>När ett lån markeras som återlämnat skickas en notis till mottagarlistan.</small>
+                  </span>
+                  <input id="notifyReturnedLoan" type="checkbox">
+                </label>
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid låg lagernivå</strong>
+                    <small>Gäller när saldo når eller passerar beställningspunkt.</small>
+                  </span>
+                  <input id="notifyLowStockAutomation" type="checkbox">
+                </label>
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid tomt lager</strong>
+                    <small>Gäller när saldo blir 0.</small>
+                  </span>
+                  <input id="notifyEmptyStock" type="checkbox">
+                </label>
+                <label class="settings-option-row settings-option-row-with-input">
+                  <span>
+                    <strong>Skicka notis innan inlämning</strong>
+                    <small>Välj hur många dagar innan returdatum påminnelsen ska skickas.</small>
+                  </span>
+                  <span class="settings-inline-control">
+                    <input id="notifyDueSoon" type="checkbox">
+                    <select id="dueSoonDays" aria-label="Dagar kvar till inlämning">
+                      <option value="0">0</option>
+                      <option value="1">1</option>
+                      <option value="3">3</option>
+                      <option value="5">5</option>
+                      <option value="7">7</option>
+                      <option value="10" selected>10</option>
+                      <option value="14">14</option>
+                      <option value="21">21</option>
+                      <option value="30">30</option>
+                      <option value="60">60</option>
+                      <option value="90">90</option>
+                    </select>
+                    <small>dagar</small>
+                  </span>
+                </label>
+                <label class="settings-option-row">
+                  <span>
+                    <strong>Skicka notis vid sen inlämning</strong>
+                    <small>När returdatum har passerat skickas en notis.</small>
+                  </span>
+                  <input id="notifyOverdue" type="checkbox">
+                </label>
+                <label class="settings-option-row settings-option-row-with-input">
+                  <span>
+                    <strong>Skicka påminnelse vid sen inlämning</strong>
+                    <small>Upprepa påminnelsen var X:e dag för sena lån.</small>
+                  </span>
+                  <span class="settings-inline-control">
+                    <input id="notifyOverdueRepeat" type="checkbox">
+                    <select id="overdueRepeatDays" aria-label="Dagar mellan sena påminnelser">
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3" selected>3</option>
+                      <option value="5">5</option>
+                      <option value="7">7</option>
+                      <option value="10">10</option>
+                      <option value="14">14</option>
+                      <option value="30">30</option>
+                    </select>
+                    <small>dagar</small>
+                  </span>
+                </label>
+              </div>
+              <section class="notification-recipient-panel" aria-labelledby="notificationRecipientsTitle">
+                <div>
+                  <h3 id="notificationRecipientsTitle">Mottagare för notiser</h3>
+                  <p>Välj vilka som ska få respektive notis. Lämna en rad tom för att använda den globala mottagarlistan i SMTP.</p>
+                </div>
+                <div class="notification-recipient-list">
+                  <div class="notification-recipient-row" data-recipient-key="notification_recipients_new_job">
+                    <div>
+                      <strong>Nytt jobb</strong>
+                      <small>När en låneförfrågan skapas.</small>
+                    </div>
+                    <div class="notification-recipient-editor">
+                      <div class="recipient-chip-list" data-recipient-chips="notification_recipients_new_job"></div>
+                      <div class="recipient-add-row">
+                        <input data-recipient-input="notification_recipients_new_job" list="notificationRecipientOptions" placeholder="namn@ellab.com">
+                        <button class="table-action-button" type="button" data-add-recipient="notification_recipients_new_job">Lägg till</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="notification-recipient-row" data-recipient-key="notification_recipients_returned_loan">
+                    <div>
+                      <strong>Tillbaka lämnad låning</strong>
+                      <small>När ett lån markeras som återlämnat.</small>
+                    </div>
+                    <div class="notification-recipient-editor">
+                      <div class="recipient-chip-list" data-recipient-chips="notification_recipients_returned_loan"></div>
+                      <div class="recipient-add-row">
+                        <input data-recipient-input="notification_recipients_returned_loan" list="notificationRecipientOptions" placeholder="namn@ellab.com">
+                        <button class="table-action-button" type="button" data-add-recipient="notification_recipients_returned_loan">Lägg till</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="notification-recipient-row" data-recipient-key="notification_recipients_low_stock">
+                    <div>
+                      <strong>Låg lagernivå</strong>
+                      <small>När saldo når beställningspunkt.</small>
+                    </div>
+                    <div class="notification-recipient-editor">
+                      <div class="recipient-chip-list" data-recipient-chips="notification_recipients_low_stock"></div>
+                      <div class="recipient-add-row">
+                        <input data-recipient-input="notification_recipients_low_stock" list="notificationRecipientOptions" placeholder="namn@ellab.com">
+                        <button class="table-action-button" type="button" data-add-recipient="notification_recipients_low_stock">Lägg till</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="notification-recipient-row" data-recipient-key="notification_recipients_empty_stock">
+                    <div>
+                      <strong>Tomt lager</strong>
+                      <small>När saldo blir 0.</small>
+                    </div>
+                    <div class="notification-recipient-editor">
+                      <div class="recipient-chip-list" data-recipient-chips="notification_recipients_empty_stock"></div>
+                      <div class="recipient-add-row">
+                        <input data-recipient-input="notification_recipients_empty_stock" list="notificationRecipientOptions" placeholder="namn@ellab.com">
+                        <button class="table-action-button" type="button" data-add-recipient="notification_recipients_empty_stock">Lägg till</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <datalist id="notificationRecipientOptions"></datalist>
+              </section>
+              <div class="system-settings-actions">
+                <button class="primary-button" id="saveAutomationSettingsButton" type="button">Spara inställningar</button>
               </div>
             </section>
             </div>
@@ -546,7 +786,6 @@
               <button class="system-settings-nav-button active" type="button" data-system-section="general">Allmänt</button>
               <button class="system-settings-nav-button" type="button" data-system-section="modbus">Modbus / PLC</button>
               <button class="system-settings-nav-button" type="button" data-system-section="smtp">SMTP & notiser</button>
-              <button class="system-settings-nav-button" type="button" data-system-section="automation">Jobb & automation</button>
             </aside>
             <form class="system-settings-form" id="systemSettingsForm">
             <section class="admin-card system-settings-panel" data-system-panel="modbus">
@@ -564,11 +803,27 @@
                 </label>
                 <label>
                   Port
-                  <input id="modbusPort" type="number" min="1" max="65535" value="502">
+                  <select id="modbusPort">
+                    <option value="502">502</option>
+                    <option value="1502">1502</option>
+                    <option value="8502">8502</option>
+                  </select>
                 </label>
                 <label>
                   Unit ID
-                  <input id="modbusUnitId" type="number" min="1" max="255" value="1">
+                  <select id="modbusUnitId">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                    <option value="255">255</option>
+                  </select>
                 </label>
                 <label>
                   Startregister
@@ -592,7 +847,12 @@
                 </label>
                 <label>
                   Port
-                  <input id="smtpPort" type="number" min="1" max="65535" value="587">
+                  <select id="smtpPort">
+                    <option value="25">25</option>
+                    <option value="465">465</option>
+                    <option value="587" selected>587</option>
+                    <option value="2525">2525</option>
+                  </select>
                 </label>
                 <label>
                   Användarnamn
@@ -614,52 +874,12 @@
                   Mottagare
                   <textarea id="notificationRecipients" rows="3" placeholder="namn@example.com, drift@example.com"></textarea>
                 </label>
-                <label>
-                  Påminn före retur
-                  <input id="loanReminderDays" type="number" min="0" max="30" value="1">
-                </label>
-                <label class="checkbox-row">
-                  <input id="notifyNewJob" type="checkbox">
-                  Nytt jobb
-                </label>
-                <label class="checkbox-row">
-                  <input id="notifyLowStock" type="checkbox">
-                  Låg lagernivå
-                </label>
-                <label class="checkbox-row">
-                  <input id="notifyLoanReminders" type="checkbox">
-                  Lånepåminnelser
-                </label>
               </div>
             </section>
 
               <div class="system-settings-panel reminder-panel" data-system-panel="smtp">
                 <button class="secondary-button reminder-send-button" id="sendRemindersButton" type="button">Skicka påminnelser nu</button>
               </div>
-            <section class="admin-card system-settings-panel" data-system-panel="automation">
-              <div class="section-title-row">
-                <div>
-                  <h2>Jobb & automation</h2>
-                  <p class="system-settings-description">Regler för notiser när nya jobb skapas och lagernivåer behöver åtgärdas.</p>
-                </div>
-              </div>
-              <div class="settings-option-list">
-                <label class="settings-option-row">
-                  <span>
-                    <strong>Skicka notis vid nytt jobb</strong>
-                    <small>När en operatör begär lån skapas jobb och berörd personal får meddelande.</small>
-                  </span>
-                  <input id="notifyNewJobAutomation" type="checkbox">
-                </label>
-                <label class="settings-option-row">
-                  <span>
-                    <strong>Skicka notis vid låg lagernivå</strong>
-                    <small>Gäller när saldo når eller passerar beställningspunkt.</small>
-                  </span>
-                  <input id="notifyLowStockAutomation" type="checkbox">
-                </label>
-              </div>
-            </section>
 
             <section class="admin-card system-settings-panel active" data-system-panel="general">
               <div class="section-title-row">

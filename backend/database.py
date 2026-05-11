@@ -51,6 +51,7 @@ def initialize_database() -> None:
                 available_quantity INTEGER NOT NULL CHECK(available_quantity >= 0),
                 min_quantity INTEGER NOT NULL CHECK(min_quantity >= 0),
                 status TEXT NOT NULL,
+                is_consumable INTEGER NOT NULL DEFAULT 0,
                 image_data TEXT
             );
 
@@ -142,6 +143,7 @@ def initialize_database() -> None:
             "search_words": "TEXT",
             "tray_for": "TEXT",
             "lift_tray": "TEXT",
+            "is_consumable": "INTEGER NOT NULL DEFAULT 0",
             "image_data": "TEXT",
         }
         for column_name, column_type in missing_columns.items():
@@ -169,6 +171,7 @@ def initialize_database() -> None:
         missing_loan_columns = {
             "engine_id": "TEXT",
             "project_number": "TEXT",
+            "loan_request_id": "INTEGER",
         }
         for column_name, column_type in missing_loan_columns.items():
             if column_name not in loan_columns:

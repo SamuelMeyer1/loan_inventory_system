@@ -10,17 +10,22 @@ const state = {
   consumableReports: [],
   events: [],
   systemSettings: {},
+  statistics: {},
   editingObjectId: null,
   editingUserId: null,
   role: "operator",
   language: localStorage.getItem("language") || "sv",
   selectedJobId: null,
-  dashboardGuideIndex: 0,
+  dashboardTipIndex: 0,
+  jobsCollapsed: localStorage.getItem("jobsCollapsed") === "1",
 };
 
 const viewTitles = {
   dashboard: "nav.dashboard",
+  myLoans: "nav.myLoans",
   checkout: "nav.checkout",
+  pickup: "nav.pickup",
+  consumable: "nav.consumable",
   return: "nav.return",
   statistics: "nav.statistics",
   jobs: "nav.jobs",
@@ -32,6 +37,13 @@ const viewTitles = {
 };
 
 const $ = (selector) => document.querySelector(selector);
+const TABLE_RENDER_LIMIT = 500;
+const notificationRecipientKeys = [
+  "notification_recipients_new_job",
+  "notification_recipients_returned_loan",
+  "notification_recipients_low_stock",
+  "notification_recipients_empty_stock",
+];
 
 const translations = {
   sv: {
@@ -39,7 +51,10 @@ const translations = {
     "sidebar.footer": "Lokal HTML-prototyp",
     "nav.dashboard": "Dashboard",
     "nav.checkout": "Låna",
+    "nav.pickup": "Hämta artikel",
+    "nav.consumable": "Anmäl slut av förbrukningsvara",
     "nav.return": "Lämna tillbaka",
+    "nav.myLoans": "Mina utlåningar",
     "nav.issue": "Checka ut",
     "nav.book": "Boka",
     "nav.objects": "Objekt",
@@ -63,6 +78,7 @@ const translations = {
     "dashboard.showJobs": "Visa jobb",
     "dashboard.reportConsumable": "Rapportera slut förbrukningsvara",
     "dashboard.openReports": "Öppna förbrukningsrapporter",
+    "dashboard.myLoans": "MINA UTLÅNINGAR",
     "dashboard.return": "Lämna tillbaka",
     "dashboard.return.desc": "Avsluta ett aktivt lån.",
     "dashboard.issue": "Checka ut",
@@ -70,9 +86,11 @@ const translations = {
     "dashboard.book": "Boka",
     "dashboard.book.desc": "Boka ett framtida lån.",
     "stats.objects": "Antal objekt",
-    "stats.loaned": "Utlånade objekt",
+    "stats.loaned": "Aktiva lån",
     "stats.overdue": "Sena lån",
     "stats.low": "Låg nivå",
+    "stats.readyPickup": "Klara att hämta",
+    "stats.openJobs": "Öppna jobb",
     "stats.objectStatus": "Objektstatus",
     "stats.monthlyLoans": "Lånade per månad",
     "checkout.missingUser": "Saknas användaren?",
@@ -157,6 +175,8 @@ const translations = {
     "jobs.nextReturned": "Markerad inlämnad",
     "jobs.nextStocked": "Lagerförd",
     "jobs.status.requested": "Request",
+    "jobs.collapseAll": "D\u00f6lj jobb",
+    "jobs.expandAll": "Visa jobb",
     "jobs.status.prepared": "Ready for pickup",
     "jobs.status.loaned": "Lånad",
     "jobs.status.returned": "Återlämnad",
@@ -205,7 +225,10 @@ const translations = {
     "sidebar.footer": "Local HTML prototype",
     "nav.dashboard": "Dashboard",
     "nav.checkout": "Borrow",
+    "nav.pickup": "Pick up item",
+    "nav.consumable": "Report empty consumable",
     "nav.return": "Return",
+    "nav.myLoans": "My loans",
     "nav.issue": "Issue",
     "nav.book": "Book",
     "nav.objects": "Objects",
@@ -229,6 +252,7 @@ const translations = {
     "dashboard.showJobs": "Show jobs",
     "dashboard.reportConsumable": "Report empty consumable",
     "dashboard.openReports": "Open consumable reports",
+    "dashboard.myLoans": "MY LOANS",
     "dashboard.return": "Return",
     "dashboard.return.desc": "Close an active loan.",
     "dashboard.issue": "Issue",
@@ -236,9 +260,11 @@ const translations = {
     "dashboard.book": "Book",
     "dashboard.book.desc": "Book a future loan.",
     "stats.objects": "Objects",
-    "stats.loaned": "Loaned objects",
+    "stats.loaned": "Active loans",
     "stats.overdue": "Overdue loans",
     "stats.low": "Low stock",
+    "stats.readyPickup": "Ready for pickup",
+    "stats.openJobs": "Open jobs",
     "stats.objectStatus": "Object status",
     "stats.monthlyLoans": "Loans per month",
     "checkout.missingUser": "Missing user?",
@@ -323,6 +349,8 @@ const translations = {
     "jobs.nextReturned": "Mark returned",
     "jobs.nextStocked": "Stocked",
     "jobs.status.requested": "Request",
+    "jobs.collapseAll": "Hide jobs",
+    "jobs.expandAll": "Show jobs",
     "jobs.status.prepared": "Ready for pickup",
     "jobs.status.loaned": "Loaned",
     "jobs.status.returned": "Returned",
@@ -437,15 +465,16 @@ function applyTranslations() {
   setOptionText("newUserRole", "admin", "role.admin");
   setOptionText("newUserRole", "superadmin", "role.superadmin");
 
-  setText("#dashboardView h1", "nav.dashboard");
+  setText("#dashboardMyLoansButton", "dashboard.myLoans");
+  renderDashboardTips();
 
   setText("#statisticsView h1", "nav.statistics");
   setText(".stat-card:nth-of-type(1) span", "stats.objects");
   setText(".stat-card:nth-of-type(2) span", "stats.loaned");
   setText(".stat-card:nth-of-type(3) span", "stats.overdue");
   setText(".stat-card:nth-of-type(4) span", "stats.low");
-  setText(".chart-container:nth-of-type(1) .chart-title", "stats.objectStatus");
-  setText(".chart-container:nth-of-type(2) .chart-title", "stats.monthlyLoans");
+  setText(".stat-card:nth-of-type(5) span", "stats.readyPickup");
+  setText(".stat-card:nth-of-type(6) span", "stats.openJobs");
 
   setText("#checkoutView h1", "nav.checkout");
   setText(".checkout-action-row span", "checkout.missingUser");
@@ -529,6 +558,13 @@ function applyTranslations() {
 
   setText("#returnView h1", "nav.return");
   setPlaceholder("#returnUserSearch", "checkout.searchUser");
+  setText("#pickupView h1", "nav.pickup");
+  setLabel("pickupUserSearch", "checkout.searchUser");
+  setPlaceholder("#pickupUserSearch", "checkout.searchUser");
+  setText("#myLoansView h1", "nav.myLoans");
+  setLabel("myLoansUserSearch", "checkout.searchUser");
+  setPlaceholder("#myLoansUserSearch", "checkout.searchUser");
+  setText("#consumableView h1", "nav.consumable");
   setText("#objectsView h1", "nav.objects");
   setPlaceholder("#objectSearch", "objects.searchPlaceholder");
   setHeaderTexts("#objectsView table", [
@@ -556,6 +592,7 @@ function applyTranslations() {
   ]);
   setText("#loansView h1", "nav.loans");
   setText("#jobsView h1", "nav.jobs");
+  updateJobsCollapseButton();
 
   setHeaderTexts("#loansView table", [
     "table.loanId",
@@ -612,7 +649,6 @@ function applyTranslations() {
   if (searchTabs[3]) searchTabs[3].textContent = t("search.log");
   $("#searchEmpty").textContent = t("search.empty");
 
-  $("#topbarTitle").textContent = t(viewTitles[document.querySelector(".nav-button.active")?.dataset.view || "dashboard"]);
 }
 
 // ============================================================
@@ -655,17 +691,15 @@ function setView(view) {
   document.querySelectorAll(".view").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `${view}View`);
   });
-  $("#topbarTitle").textContent = t(viewTitles[view]);
-
   if (view === "statistics") {
-  renderStatusChart(state);
-  renderLoansPerMonthChart(state);
+  renderAllStatisticsCharts(state);
 }
 }
 
 async function refreshAll() {
-  const [stats, objects, users, loans, jobs, consumableReports, events, systemSettings] = await Promise.all([
+  const [stats, statistics, objects, users, loans, jobs, consumableReports, events, systemSettings] = await Promise.all([
     api("/api/stats"),
+    api("/api/statistics"),
     api("/api/objects"),
     api("/api/users"),
     api("/api/loans"),
@@ -676,6 +710,7 @@ async function refreshAll() {
   ]);
 
   state.objects = objects;
+  state.statistics = statistics;
   state.users = users;
   state.loans = loans;
   state.jobs = jobs;
@@ -690,8 +725,9 @@ async function refreshAll() {
   renderAdminObjectsTable();
   renderLoans();
   renderReturnLoans();
-  renderDashboardLoans();
-  renderDashboardGuide();
+  renderPickupItems();
+  renderMyLoans();
+  renderDashboardTips();
   renderJobs();
   renderConsumableReports();
   renderEvents();
@@ -700,10 +736,11 @@ async function refreshAll() {
   applyRole();
   updateCheckoutInfo();
   renderReturnLoans();
+  renderPickupItems();
+  renderMyLoans();
   applyTranslations();
   if (document.querySelector("#statisticsView.active")) {
-    renderStatusChart(state);
-    renderLoansPerMonthChart(state);
+    renderAllStatisticsCharts(state);
   }
 
 }
@@ -714,36 +751,163 @@ async function refreshAll() {
 // ============================================================
 
 function renderStats(stats) {
-  $("#objectsStat").textContent = stats.objects;
-  $("#loanedStat").textContent = stats.loaned;
-  $("#overdueStat").textContent = stats.overdue;
-  $("#lowStockStat").textContent = stats.low_stock;
+  const summary = state.statistics?.summary || stats;
+  $("#objectsStat").textContent = summary.objects || 0;
+  $("#loanedStat").textContent = summary.loaned || 0;
+  $("#overdueStat").textContent = summary.overdue || 0;
+  $("#lowStockStat").textContent = summary.low_stock || 0;
+  $("#readyPickupStat").textContent = summary.ready_pickup || 0;
+  $("#openJobsStat").textContent = summary.jobs || 0;
 }
 
 function renderSystemSettings() {
   if (!$("#systemSettingsForm")) return;
   const settings = state.systemSettings || {};
-  $("#modbusEnabled").checked = settings.modbus_enabled === "1";
-  $("#modbusHost").value = settings.modbus_host || "";
-  $("#modbusPort").value = settings.modbus_port || "502";
-  $("#modbusUnitId").value = settings.modbus_unit_id || "1";
-  $("#modbusRegisterStart").value = settings.modbus_register_start || "";
-  $("#smtpEnabled").checked = settings.smtp_enabled === "1";
-  $("#smtpHost").value = settings.smtp_host || "";
-  $("#smtpPort").value = settings.smtp_port || "587";
-  $("#smtpUsername").value = settings.smtp_username || "";
-  $("#smtpPassword").value = "";
-  $("#smtpFromAddress").value = settings.smtp_from_address || "";
-  $("#smtpUseTls").checked = settings.smtp_use_tls !== "0";
-  $("#notificationRecipients").value = settings.notification_recipients || "";
-  $("#loanReminderDays").value = settings.loan_reminder_days || "1";
-  $("#notifyNewJob").checked = settings.notify_new_job !== "0";
-  $("#notifyLowStock").checked = settings.notify_low_stock !== "0";
-  $("#notifyLoanReminders").checked = settings.notify_loan_reminders !== "0";
-  $("#notifyNewJobAutomation").checked = settings.notify_new_job !== "0";
-  $("#notifyLowStockAutomation").checked = settings.notify_low_stock !== "0";
-  $("#smtpSummary").textContent = settings.smtp_enabled === "1" ? "Ja" : "Nej";
-  $("#modbusSummary").textContent = settings.modbus_enabled === "1" ? "Ja" : "Nej";
+  setChecked("#modbusEnabled", settings.modbus_enabled === "1");
+  setValue("#modbusHost", settings.modbus_host || "");
+  setValue("#modbusPort", settings.modbus_port || "502");
+  setValue("#modbusUnitId", settings.modbus_unit_id || "1");
+  setValue("#modbusRegisterStart", settings.modbus_register_start || "");
+  setChecked("#smtpEnabled", settings.smtp_enabled === "1");
+  setValue("#smtpHost", settings.smtp_host || "");
+  setValue("#smtpPort", settings.smtp_port || "587");
+  setValue("#smtpUsername", settings.smtp_username || "");
+  setValue("#smtpPassword", "");
+  setValue("#smtpFromAddress", settings.smtp_from_address || "");
+  setChecked("#smtpUseTls", settings.smtp_use_tls !== "0");
+  setValue("#notificationRecipients", settings.notification_recipients || "");
+  setValue("#loanReminderDays", settings.loan_reminder_days || settings.due_soon_days || "10");
+  setChecked("#notifyNewJob", settings.notify_new_job !== "0");
+  setChecked("#notifyLowStock", settings.notify_low_stock !== "0");
+  setChecked("#notifyLoanReminders", settings.notify_loan_reminders !== "0");
+  setChecked("#notifyNewJobAutomation", settings.notify_new_job !== "0");
+  setChecked("#notifyReturnedLoan", settings.notify_returned_loan !== "0");
+  setChecked("#notifyLowStockAutomation", settings.notify_low_stock !== "0");
+  setChecked("#notifyEmptyStock", settings.notify_empty_stock !== "0");
+  setChecked("#notifyDueSoon", (settings.notify_due_soon || settings.notify_loan_reminders) !== "0");
+  setValue("#dueSoonDays", settings.due_soon_days || settings.loan_reminder_days || "10");
+  setChecked("#notifyOverdue", settings.notify_overdue !== "0");
+  setChecked("#notifyOverdueRepeat", settings.notify_overdue_repeat !== "0");
+  setValue("#overdueRepeatDays", settings.overdue_repeat_days || "3");
+  setTextValue("#smtpSummary", settings.smtp_enabled === "1" ? "Ja" : "Nej");
+  setTextValue("#modbusSummary", settings.modbus_enabled === "1" ? "Ja" : "Nej");
+  renderNotificationRecipients();
+}
+
+function setChecked(selector, value) {
+  const element = $(selector);
+  if (element) element.checked = value;
+}
+
+function setValue(selector, value) {
+  const element = $(selector);
+  if (!element) return;
+  if (element.tagName === "SELECT" && value !== "" && !Array.from(element.options).some((option) => option.value === String(value))) {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = String(value);
+    element.append(option);
+  }
+  element.value = value;
+}
+
+function setTextValue(selector, value) {
+  const element = $(selector);
+  if (element) element.textContent = value;
+}
+
+function populateNumberSelects() {
+  document.querySelectorAll("select[data-number-select]").forEach((select) => {
+    const min = Number(select.dataset.min || 0);
+    const max = Number(select.dataset.max || 100);
+    const step = Number(select.dataset.step || 1);
+    const defaultValue = select.dataset.default || String(min);
+    select.innerHTML = "";
+    for (let value = min; value <= max; value += step) {
+      const option = document.createElement("option");
+      option.value = String(value);
+      option.textContent = String(value);
+      select.append(option);
+    }
+    select.value = defaultValue;
+  });
+}
+
+function splitRecipients(value) {
+  return String(value || "")
+    .split(/[,\n;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeRecipient(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function recipientsForKey(key) {
+  return splitRecipients(state.systemSettings?.[key] || "");
+}
+
+function setRecipientsForKey(key, recipients) {
+  const uniqueRecipients = [];
+  const seen = new Set();
+  recipients.forEach((recipient) => {
+    const normalized = normalizeRecipient(recipient);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    uniqueRecipients.push(normalized);
+  });
+  state.systemSettings[key] = uniqueRecipients.join(", ");
+}
+
+function renderNotificationRecipientOptions() {
+  const datalist = $("#notificationRecipientOptions");
+  if (!datalist) return;
+  const values = new Set();
+  state.users.forEach((user) => {
+    if (user.email) values.add(user.email);
+  });
+  splitRecipients(state.systemSettings?.notification_recipients || "").forEach((recipient) => values.add(recipient));
+  datalist.innerHTML = [...values].sort().map((email) => `<option value="${escapeHtml(email)}"></option>`).join("");
+}
+
+function renderNotificationRecipients() {
+  renderNotificationRecipientOptions();
+  notificationRecipientKeys.forEach((key) => {
+    const container = document.querySelector(`[data-recipient-chips="${key}"]`);
+    if (!container) return;
+    const recipients = recipientsForKey(key);
+    if (!recipients.length) {
+      container.innerHTML = `<span class="recipient-empty">Använder global SMTP-lista</span>`;
+      return;
+    }
+    container.innerHTML = recipients.map((recipient) => `
+      <span class="recipient-chip">
+        ${escapeHtml(recipient)}
+        <button type="button" aria-label="Ta bort ${escapeHtml(recipient)}" data-remove-recipient="${key}" data-recipient-value="${escapeHtml(recipient)}">×</button>
+      </span>
+    `).join("");
+  });
+}
+
+function addNotificationRecipient(key) {
+  const input = document.querySelector(`[data-recipient-input="${key}"]`);
+  if (!input) return;
+  const additions = splitRecipients(input.value);
+  if (!additions.length) return;
+  const invalid = additions.find((recipient) => !recipient.includes("@"));
+  if (invalid) {
+    showToast(`Ogiltig e-postadress: ${invalid}`);
+    return;
+  }
+  setRecipientsForKey(key, recipientsForKey(key).concat(additions));
+  input.value = "";
+  renderNotificationRecipients();
+}
+
+function removeNotificationRecipient(key, recipient) {
+  setRecipientsForKey(key, recipientsForKey(key).filter((item) => normalizeRecipient(item) !== normalizeRecipient(recipient)));
+  renderNotificationRecipients();
 }
 
 function showSystemSettingsSection(section) {
@@ -879,6 +1043,11 @@ function renderCheckoutUserSuggestions() {
   });
 }
 
+function showDashboardMyLoans() {
+  setView("myLoans");
+  renderMyLoans();
+}
+
 function selectCheckoutUser(userId) {
   const user = state.users.find((item) => item.user_id === userId);
   if (!user) return;
@@ -898,6 +1067,20 @@ function resolveCheckoutUserId() {
     return label === term || user.user_id.toLowerCase() === term || user.email?.toLowerCase() === term || user.alias?.toLowerCase() === term;
   });
   return exact ? exact.user_id : "";
+}
+
+function resolveUserSearchTerm(selector) {
+  const term = $(selector)?.value.trim().toLowerCase() || "";
+  if (!term) return "";
+  const labels = userLabels();
+  const exact = state.users.find((user) => {
+    const label = labels.get(user.user_id)?.toLowerCase();
+    return label === term || user.name.toLowerCase() === term || user.user_id.toLowerCase() === term || user.email?.toLowerCase() === term || user.alias?.toLowerCase() === term;
+  });
+  if (exact) return exact.user_id;
+
+  const matches = state.users.filter((user) => userSearchText(user).includes(term));
+  return matches.length === 1 ? matches[0].user_id : "";
 }
 
 function renderCheckoutUserDetails(user = null) {
@@ -964,7 +1147,7 @@ function renderObjects() {
       (status === "Alla" || item.status === status);
   });
 
-  $("#objectsBody").innerHTML = filtered.map((item) => `
+  $("#objectsBody").innerHTML = filtered.slice(0, TABLE_RENDER_LIMIT).map((item) => `
     <tr class="${item.available_quantity <= item.min_quantity ? "low" : ""}">
       <td>${objectThumbnail(item)}</td>
       <td>${escapeHtml(item.category)}</td>
@@ -1005,7 +1188,7 @@ function renderObjects() {
 function renderAdminObjectsTable() {
   const body = $("#adminObjectsBody");
   if (!body) return;
-  body.innerHTML = state.objects.map((item) => `
+  body.innerHTML = state.objects.slice(0, TABLE_RENDER_LIMIT).map((item) => `
     <tr class="${item.available_quantity <= item.min_quantity ? "low" : ""}">
       <td>${escapeHtml(item.object_id)}</td>
       <td>${escapeHtml(item.name)}</td>
@@ -1045,6 +1228,18 @@ function objectSearchText(item) {
   ].join(" ").toLowerCase();
 }
 
+function isConsumableObject(item) {
+  if (item.is_consumable === 1 || item.is_consumable === "1" || item.is_consumable === true) return true;
+  const text = [
+    item.category,
+    item.item_type,
+    item.description,
+    item.search_words,
+    item.name,
+  ].join(" ").toLowerCase();
+  return text.includes("förbruk") || text.includes("forbruk") || text.includes("consumable");
+}
+
 function matchesCheckoutStockFilter(item) {
   const filter = $("#checkoutStockFilter")?.value || "in_stock";
   if (filter === "all") return true;
@@ -1063,10 +1258,11 @@ function renderCheckoutObjectSuggestions() {
     return;
   }
 
-  const matches = state.objects
-    .filter((item) => matchesCheckoutStockFilter(item) && objectSearchText(item).includes(term))
-    .sort((a, b) => b.available_quantity - a.available_quantity || a.name.localeCompare(b.name))
-    .slice(0, 8);
+  const allMatches = state.objects
+    .filter((item) => !isConsumableObject(item) && objectSearchText(item).includes(term))
+    .sort((a, b) => b.available_quantity - a.available_quantity || a.name.localeCompare(b.name));
+  const filteredMatches = allMatches.filter(matchesCheckoutStockFilter);
+  const matches = (filteredMatches.length ? filteredMatches : allMatches).slice(0, 8);
   suggestions.innerHTML = matches.map((item) => `
     <button class="suggestion-button" type="button" data-select-object="${escapeHtml(item.object_id)}">
       <strong>${escapeHtml(item.name)} (${escapeHtml(item.article_number || item.object_id)})</strong>
@@ -1096,7 +1292,7 @@ function renderConsumableObjectSuggestions() {
     suggestions.innerHTML = "";
     return;
   }
-  const matches = state.objects.filter((item) => objectSearchText(item).includes(term)).slice(0, 8);
+  const matches = state.objects.filter((item) => isConsumableObject(item) && objectSearchText(item).includes(term)).slice(0, 8);
   suggestions.innerHTML = matches.map((item) => `
     <button class="suggestion-button" type="button" data-select-consumable="${escapeHtml(item.object_id)}">
       <strong>${escapeHtml(item.name)}</strong>
@@ -1178,42 +1374,73 @@ function renderLoans() {
   });
 }
 
-function renderDashboardLoans() {
-  const list = $("#dashboardLoansList");
-  if (!list) return;
-  if (!state.loans.length) {
-    list.innerHTML = `<div class="job-empty">${state.language === "en" ? "No active loans." : "Inga aktiva utlåningar."}</div>`;
-    return;
+function dashboardTips() {
+  if (state.language === "en") {
+    return [
+      {
+        title: "Borrow an item",
+        text: "Press Borrow, choose yourself, search for the item and send the loan request with quantity and return date.",
+      },
+      {
+        title: "Return an item",
+        text: "Press Return, search for your name and return the active loan from the list.",
+      },
+      {
+        title: "Find your loans",
+        text: "Press My loans to open the loan list. Search for your name to see what is currently borrowed.",
+      },
+      {
+        title: "Report empty stock",
+        text: "Use Report empty consumable when an article is running out, so it can be refilled.",
+      },
+    ];
   }
-  list.innerHTML = state.loans.slice(0, 5).map((loan) => `
-    <article class="dashboard-loan-card ${loan.overdue ? "late" : ""}">
-      <div>
-        <strong>${escapeHtml(loan.object_name)}</strong>
-        <span>#${loan.loan_id} · ${escapeHtml(loan.user_name)}</span>
-      </div>
-      <div>
-        <span>${escapeHtml(formatTime(loan.due_time))}</span>
-        ${statusBadge(loan.overdue ? "Sen" : "Aktiv")}
-      </div>
-    </article>
-  `).join("");
+  return [
+    {
+      title: "Låna ett objekt",
+      text: "Tryck på Låna, välj dig själv, sök fram objektet och skicka låneförfrågan med antal och returdatum.",
+    },
+    {
+      title: "Lämna tillbaka",
+      text: "Tryck på Lämna tillbaka, sök på ditt namn och återlämna rätt aktivt lån i listan.",
+    },
+    {
+      title: "Se mina utlåningar",
+      text: "Tryck på Mina utlåningar för att öppna listan. Sök på ditt namn för att se det som är utlånat just nu.",
+    },
+    {
+      title: "Anmäl förbrukningsvara",
+      text: "Använd Anmäl slut av förbrukningsvara när en artikel håller på att ta slut så den kan fyllas på.",
+    },
+  ];
 }
 
-function renderDashboardGuide() {
-  const track = $("#dashboardGuideTrack");
-  const dots = $("#dashboardGuideDots");
-  if (!track || !dots) return;
-  const slides = [...track.querySelectorAll(".dashboard-guide-slide")];
-  track.style.transform = `translateX(-${state.dashboardGuideIndex * 100}%)`;
-  dots.innerHTML = slides.map((_, index) => `
-    <button class="dashboard-guide-dot ${index === state.dashboardGuideIndex ? "active" : ""}" type="button" data-guide-index="${index}" aria-label="Visa steg ${index + 1}"></button>
+function renderDashboardTips() {
+  const slide = $("#dashboardTipsSlide");
+  const dots = $("#dashboardTipsDots");
+  if (!slide || !dots) return;
+  const tips = dashboardTips();
+  const index = state.dashboardTipIndex % tips.length;
+  const tip = tips[index];
+  slide.innerHTML = `
+    <strong>${escapeHtml(tip.title)}</strong>
+    <p>${escapeHtml(tip.text)}</p>
+  `;
+  dots.innerHTML = tips.map((_, tipIndex) => `
+    <button class="dashboard-tips-dot ${tipIndex === index ? "active" : ""}" type="button" data-dashboard-tip="${tipIndex}" aria-label="Visa tips ${tipIndex + 1}"></button>
   `).join("");
-  dots.querySelectorAll("[data-guide-index]").forEach((button) => {
+  dots.querySelectorAll("[data-dashboard-tip]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.dashboardGuideIndex = Number(button.dataset.guideIndex);
-      renderDashboardGuide();
+      state.dashboardTipIndex = Number(button.dataset.dashboardTip);
+      renderDashboardTips();
     });
   });
+}
+
+function stepDashboardTip(direction) {
+  const tips = dashboardTips();
+  state.dashboardTipIndex = (state.dashboardTipIndex + direction + tips.length) % tips.length;
+  renderDashboardTips();
 }
 
 function nextJobAction(status) {
@@ -1229,6 +1456,7 @@ function nextJobAction(status) {
 function renderJobs() {
   const jobsBoard = $("#jobsBoard");
   if (!jobsBoard) return;
+  jobsBoard.classList.toggle("jobs-collapsed", state.jobsCollapsed);
   const filteredJobs = getFilteredJobs();
   const columns = [
     { status: "requested", tone: "yellow" },
@@ -1254,6 +1482,9 @@ function renderJobs() {
   document.querySelectorAll("[data-job-id]").forEach((button) => {
     button.addEventListener("click", () => updateJobStatus(Number(button.dataset.jobId), button.dataset.jobStatus));
   });
+  document.querySelectorAll("[data-delete-job]").forEach((button) => {
+    button.addEventListener("click", () => deleteJob(Number(button.dataset.deleteJob)));
+  });
   document.querySelectorAll("[data-open-job-id]").forEach((card) => {
     card.addEventListener("click", (event) => {
       if (event.target.closest("button, summary, details")) return;
@@ -1261,6 +1492,20 @@ function renderJobs() {
     });
   });
   bindJobDragAndDrop();
+}
+
+function updateJobsCollapseButton() {
+  const button = $("#toggleJobsCollapsed");
+  if (!button) return;
+  button.textContent = t(state.jobsCollapsed ? "jobs.expandAll" : "jobs.collapseAll");
+  button.setAttribute("aria-pressed", String(state.jobsCollapsed));
+}
+
+function toggleJobsCollapsed() {
+  state.jobsCollapsed = !state.jobsCollapsed;
+  localStorage.setItem("jobsCollapsed", state.jobsCollapsed ? "1" : "0");
+  updateJobsCollapseButton();
+  renderJobs();
 }
 
 function getFilteredJobs() {
@@ -1349,7 +1594,10 @@ function renderJobCard(job) {
           <dt>${escapeHtml(t("field.returnDate"))}</dt><dd>${escapeHtml(job.return_date)}</dd>
         </dl>
       </details>
-      ${action ? `<button class="table-action-button" type="button" data-job-id="${job.request_id}" data-job-status="${action[0]}">${t(action[1])}</button>` : ""}
+      <div class="job-card-actions">
+        ${action ? `<button class="table-action-button" type="button" data-job-id="${job.request_id}" data-job-status="${action[0]}">${t(action[1])}</button>` : ""}
+        <button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>
+      </div>
     </article>
   `;
 }
@@ -1727,6 +1975,150 @@ function renderReturnUserSuggestions() {
   });
 }
 
+function renderPickupItems() {
+  const body = $("#pickupBody");
+  if (!body) return;
+  const selectedUserId = $("#pickupUser")?.value || resolveUserSearchTerm("#pickupUserSearch");
+  const empty = $("#pickupEmpty");
+  const matches = selectedUserId
+    ? state.jobs.filter((job) => job.user_id === selectedUserId && job.status === "prepared")
+    : [];
+
+  body.innerHTML = matches.map((job) => `
+    <tr>
+      <td>${job.request_id}</td>
+      <td>${escapeHtml(job.object_name)} (${escapeHtml(job.object_id)})</td>
+      <td>${escapeHtml(job.user_name)}</td>
+      <td>${escapeHtml(job.user_department || "")}</td>
+      <td>${escapeHtml(job.engine_id || "")}</td>
+      <td>${escapeHtml(job.project_number || "")}</td>
+      <td>${job.quantity}</td>
+      <td>${escapeHtml(job.lending_date || "")}</td>
+      <td>${escapeHtml(job.return_date || "")}</td>
+      <td>${statusBadge("Aktiv")}</td>
+      <td><button class="primary-button table-return-button" type="button" data-pickup-job="${job.request_id}">Hämtat</button></td>
+    </tr>
+  `).join("");
+
+  document.querySelectorAll("[data-pickup-job]").forEach((button) => {
+    button.addEventListener("click", () => markPickupCollected(Number(button.dataset.pickupJob)));
+  });
+
+  if (empty) {
+    empty.textContent = selectedUserId
+      ? matches.length
+        ? ""
+        : "Den valda användaren har inga artiklar klara att hämta."
+      : "Sök på ditt namn för att se artiklar som är klara att hämta.";
+  }
+}
+
+function renderPickupUserSuggestions() {
+  const term = $("#pickupUserSearch").value.trim().toLowerCase();
+  const suggestions = $("#pickupUserSuggestions");
+  $("#pickupUser").value = "";
+  if (!term) {
+    suggestions.classList.remove("visible");
+    suggestions.innerHTML = "";
+    renderPickupItems();
+    return;
+  }
+
+  const labels = userLabels();
+  const matches = state.users.filter((user) => userSearchText(user).includes(term)).slice(0, 8);
+  suggestions.innerHTML = matches.map((user) => `
+    <button class="suggestion-button" type="button" data-select-pickup-user="${escapeHtml(user.user_id)}">
+      <strong>${escapeHtml(labels.get(user.user_id) || user.name)}</strong>
+      <span>${escapeHtml([user.company, user.department_name || user.department, user.alias].filter(Boolean).join(" · "))}</span>
+    </button>
+  `).join("");
+  suggestions.classList.toggle("visible", matches.length > 0);
+  document.querySelectorAll("[data-select-pickup-user]").forEach((button) => {
+    button.addEventListener("click", () => selectPickupUser(button.dataset.selectPickupUser));
+  });
+  renderPickupItems();
+}
+
+function selectPickupUser(userId) {
+  const user = state.users.find((item) => item.user_id === userId);
+  if (!user) return;
+  const labels = userLabels();
+  $("#pickupUser").value = user.user_id;
+  $("#pickupUserSearch").value = labels.get(user.user_id) || user.name;
+  $("#pickupUserSuggestions").classList.remove("visible");
+  renderPickupItems();
+}
+
+function renderMyLoans() {
+  const body = $("#myLoansBody");
+  if (!body) return;
+  const selectedUserId = $("#myLoansUser")?.value || resolveUserSearchTerm("#myLoansUserSearch");
+  const empty = $("#myLoansEmpty");
+  const matches = selectedUserId
+    ? state.loans.filter((loan) => loan.user_id === selectedUserId)
+    : [];
+
+  body.innerHTML = matches.map((loan) => `
+    <tr class="${loan.overdue ? "late" : ""}">
+      <td>${loan.loan_id}</td>
+      <td>${escapeHtml(loan.object_name)} (${escapeHtml(loan.object_id)})</td>
+      <td>${escapeHtml(loan.user_name)}</td>
+      <td>${escapeHtml(loan.user_department || "")}</td>
+      <td>${escapeHtml(loan.engine_id || "")}</td>
+      <td>${escapeHtml(loan.project_number || "")}</td>
+      <td>${loan.quantity}</td>
+      <td>${formatTime(loan.checkout_time)}</td>
+      <td>${formatTime(loan.due_time)}</td>
+      <td><strong>${escapeHtml(daysUntilDueText(loan.due_time))}</strong></td>
+      <td>${statusBadge(loan.overdue ? "Sen" : "Aktiv")}</td>
+    </tr>
+  `).join("");
+
+  if (empty) {
+    empty.textContent = selectedUserId
+      ? matches.length
+        ? ""
+        : "Den valda användaren har inga aktiva utlåningar."
+      : "Sök på ditt namn för att se dina aktiva utlåningar.";
+  }
+}
+
+function renderMyLoansUserSuggestions() {
+  const term = $("#myLoansUserSearch").value.trim().toLowerCase();
+  const suggestions = $("#myLoansUserSuggestions");
+  $("#myLoansUser").value = "";
+  if (!term) {
+    suggestions.classList.remove("visible");
+    suggestions.innerHTML = "";
+    renderMyLoans();
+    return;
+  }
+
+  const labels = userLabels();
+  const matches = state.users.filter((user) => userSearchText(user).includes(term)).slice(0, 8);
+  suggestions.innerHTML = matches.map((user) => `
+    <button class="suggestion-button" type="button" data-select-my-loans-user="${escapeHtml(user.user_id)}">
+      <strong>${escapeHtml(labels.get(user.user_id) || user.name)}</strong>
+      <span>${escapeHtml([user.company, user.department_name || user.department, user.alias].filter(Boolean).join(" · "))}</span>
+    </button>
+  `).join("");
+  suggestions.classList.toggle("visible", matches.length > 0);
+  document.querySelectorAll("[data-select-my-loans-user]").forEach((button) => {
+    button.addEventListener("click", () => selectMyLoansUser(button.dataset.selectMyLoansUser));
+  });
+  renderMyLoans();
+}
+
+function selectMyLoansUser(userId) {
+  const user = state.users.find((item) => item.user_id === userId);
+  if (!user) return;
+  const labels = userLabels();
+  $("#myLoansUser").value = user.user_id;
+  $("#myLoansUserSearch").value = labels.get(user.user_id) || user.name;
+  $("#myLoansUserSuggestions").classList.remove("visible");
+  renderMyLoans();
+}
+
 function selectReturnUser(userId) {
   const user = state.users.find((item) => item.user_id === userId);
   if (!user) return;
@@ -1924,6 +2316,23 @@ async function updateJobStatus(requestId, status) {
   }
 }
 
+async function markPickupCollected(requestId) {
+  await updateJobStatus(requestId, "loaned");
+}
+
+async function deleteJob(requestId) {
+  const job = state.jobs.find((item) => item.request_id === requestId);
+  const label = job ? `${job.object_name} för ${job.user_name}` : `jobb ${requestId}`;
+  if (!confirm(`Ta bort ${label}?`)) return;
+  try {
+    const data = await api(`/api/loan-requests?request_id=${encodeURIComponent(requestId)}`, { method: "DELETE" });
+    showToast(`Jobb ${data.request_id} togs bort.`);
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 async function returnItem(loanId) {
   try {
     if (!loanId) {
@@ -2032,7 +2441,7 @@ async function removeUser(userId) {
 }
 
 async function saveSystemSettings(event) {
-  event.preventDefault();
+  event?.preventDefault();
   try {
     state.systemSettings = await api("/api/system-settings", {
       method: "PUT",
@@ -2050,10 +2459,21 @@ async function saveSystemSettings(event) {
         smtp_from_address: $("#smtpFromAddress").value,
         smtp_use_tls: $("#smtpUseTls").checked,
         notification_recipients: $("#notificationRecipients").value,
-        loan_reminder_days: $("#loanReminderDays").value,
-        notify_new_job: $("#notifyNewJob").checked || $("#notifyNewJobAutomation").checked,
-        notify_low_stock: $("#notifyLowStock").checked || $("#notifyLowStockAutomation").checked,
-        notify_loan_reminders: $("#notifyLoanReminders").checked,
+        notification_recipients_new_job: state.systemSettings.notification_recipients_new_job || "",
+        notification_recipients_returned_loan: state.systemSettings.notification_recipients_returned_loan || "",
+        notification_recipients_low_stock: state.systemSettings.notification_recipients_low_stock || "",
+        notification_recipients_empty_stock: state.systemSettings.notification_recipients_empty_stock || "",
+        loan_reminder_days: fieldValue("#dueSoonDays", fieldValue("#loanReminderDays", "10")),
+        due_soon_days: fieldValue("#dueSoonDays", fieldValue("#loanReminderDays", "10")),
+        overdue_repeat_days: fieldValue("#overdueRepeatDays", "3"),
+        notify_new_job: isChecked("#notifyNewJob") || isChecked("#notifyNewJobAutomation"),
+        notify_returned_loan: isChecked("#notifyReturnedLoan"),
+        notify_low_stock: isChecked("#notifyLowStock") || isChecked("#notifyLowStockAutomation"),
+        notify_empty_stock: isChecked("#notifyEmptyStock"),
+        notify_loan_reminders: isChecked("#notifyLoanReminders") || isChecked("#notifyDueSoon"),
+        notify_due_soon: isChecked("#notifyDueSoon"),
+        notify_overdue: isChecked("#notifyOverdue"),
+        notify_overdue_repeat: isChecked("#notifyOverdueRepeat"),
       }),
     });
     renderSystemSettings();
@@ -2062,6 +2482,14 @@ async function saveSystemSettings(event) {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+function isChecked(selector) {
+  return Boolean($(selector)?.checked);
+}
+
+function fieldValue(selector, fallback = "") {
+  return $(selector)?.value ?? fallback;
 }
 
 async function sendLoanReminders() {
@@ -2329,6 +2757,31 @@ function formatTime(value) {
   return value.slice(0, 16);
 }
 
+function daysUntilDue(value) {
+  if (!value) return null;
+  const due = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(due.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  return Math.ceil((due - today) / 86400000);
+}
+
+function daysUntilDueText(value) {
+  const days = daysUntilDue(value);
+  if (days === null) return "";
+  if (state.language === "en") {
+    if (days < 0) return `${Math.abs(days)} days overdue`;
+    if (days === 0) return "Due today";
+    if (days === 1) return "1 day left";
+    return `${days} days left`;
+  }
+  if (days < 0) return `${Math.abs(days)} dagar sen`;
+  if (days === 0) return "Ska lämnas idag";
+  if (days === 1) return "1 dag kvar";
+  return `${days} dagar kvar`;
+}
+
 function unique(values) {
   return [...new Set(values)].filter(Boolean).sort((a, b) => a.localeCompare(b, "sv"));
 }
@@ -2375,10 +2828,13 @@ function bindEvents() {
       renderFilters();
 	      renderUsers();
 	      renderLoans();
+	      renderJobs();
 	      renderObjects();
 	      renderAdminObjectsTable();
 	      updateCheckoutInfo();
       renderCheckoutUserDetails();
+      renderPickupItems();
+      renderMyLoans();
     });
   });
   document.querySelectorAll("[data-view-target]").forEach((button) => {
@@ -2398,14 +2854,20 @@ function bindEvents() {
 	  $("#jobSearch")?.addEventListener("input", renderJobs);
 	  $("#jobStatusFilter")?.addEventListener("change", renderJobs);
 	  $("#jobDateSort")?.addEventListener("change", renderJobs);
+	  $("#toggleJobsCollapsed")?.addEventListener("click", toggleJobsCollapsed);
 	  $("#checkoutObjectId").addEventListener("input", () => {
     updateCheckoutInfo();
     renderCheckoutObjectSuggestions();
   });
 	  $("#checkoutStockFilter").addEventListener("change", renderCheckoutObjectSuggestions);
 	  $("#checkoutUserSearch").addEventListener("input", renderCheckoutUserSuggestions);
+	  $("#dashboardMyLoansButton")?.addEventListener("click", showDashboardMyLoans);
+  $("#dashboardTipPrev")?.addEventListener("click", () => stepDashboardTip(-1));
+  $("#dashboardTipNext")?.addEventListener("click", () => stepDashboardTip(1));
 	  $("#consumableObjectSearch")?.addEventListener("input", renderConsumableObjectSuggestions);
 	  $("#returnUserSearch")?.addEventListener("input", renderReturnUserSuggestions);
+	  $("#pickupUserSearch")?.addEventListener("input", renderPickupUserSuggestions);
+	  $("#myLoansUserSearch")?.addEventListener("input", renderMyLoansUserSuggestions);
 
 	  $("#requestLoanButton").addEventListener("click", requestLoan);
 	  $("#consumableReportForm")?.addEventListener("submit", saveConsumableReport);
@@ -2413,7 +2875,23 @@ function bindEvents() {
   $("#addUserForm").addEventListener("submit", saveUser);
   $("#cancelUserEditButton").addEventListener("click", resetUserForm);
   $("#systemSettingsForm")?.addEventListener("submit", saveSystemSettings);
+  $("#saveAutomationSettingsButton")?.addEventListener("click", saveSystemSettings);
   $("#sendRemindersButton")?.addEventListener("click", sendLoanReminders);
+  document.querySelectorAll("[data-add-recipient]").forEach((button) => {
+    button.addEventListener("click", () => addNotificationRecipient(button.dataset.addRecipient));
+  });
+  document.querySelectorAll("[data-recipient-input]").forEach((input) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      addNotificationRecipient(input.dataset.recipientInput);
+    });
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-recipient]");
+    if (!button) return;
+    removeNotificationRecipient(button.dataset.removeRecipient, button.dataset.recipientValue);
+  });
   document.querySelectorAll(".admin-settings-nav-button").forEach((button) => {
     button.addEventListener("click", () => showAdminSettingsSection(button.dataset.adminSection));
   });
@@ -2476,9 +2954,9 @@ function bindEvents() {
 // ============================================================
 
 function init() {
+  populateNumberSelects();
   bindEvents();
   setDefaultDates();
-  renderDashboardGuide();
   applyTranslations();
   refreshAll().catch((error) => showToast(error.message));
 }

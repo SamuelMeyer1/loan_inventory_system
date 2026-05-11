@@ -58,13 +58,16 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in ("/api/objects", "/api/users"):
+        if parsed.path not in ("/api/objects", "/api/users", "/api/loan-requests"):
             self.send_error(404)
             return
 
         try:
             query = parse_qs(parsed.query)
-            if parsed.path == "/api/users":
+            if parsed.path == "/api/loan-requests":
+                request_id = int(query.get("request_id", ["0"])[0])
+                self.send_json({"ok": True, "data": services.delete_loan_request(request_id)})
+            elif parsed.path == "/api/users":
                 user_id = query.get("user_id", [""])[0]
                 self.send_json({"ok": True, "data": services.remove_user(user_id)})
             else:
@@ -129,6 +132,8 @@ class AppHandler(BaseHTTPRequestHandler):
     def handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
         if path == "/api/stats":
             self.send_json({"ok": True, "data": services.dashboard_stats()})
+        elif path == "/api/statistics":
+            self.send_json({"ok": True, "data": services.statistics_data()})
         elif path == "/api/objects":
             self.send_json(
                 {
@@ -177,6 +182,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(content)
 
