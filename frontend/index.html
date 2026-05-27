@@ -17,7 +17,7 @@
         <nav class="nav" aria-label="Huvudnavigation">
           <button class="nav-button active" data-view="dashboard" data-roles="operator,admin,superadmin">Dashboard</button>
           <button class="nav-button" data-view="checkout" data-roles="operator,admin,superadmin">Låna</button>
-          <button class="nav-button" data-view="consumable" data-roles="operator,admin,superadmin">Anmäl slut av förbrukningsvara</button>
+          <button class="nav-button" data-view="consumable" data-roles="operator,admin,superadmin">Anmäl slut på lager</button>
           <button class="nav-button" data-view="return" data-roles="operator,admin,superadmin">Lämna tillbaka</button>
           <button class="nav-button" data-view="myLoans" data-roles="operator,admin,superadmin">Mina utlåningar</button>
           <button class="nav-button" data-view="objects" data-roles="admin,superadmin">Objekt</button>
@@ -28,7 +28,6 @@
           <button class="nav-button" data-view="log" data-roles="admin,superadmin">Logg</button>
           <button class="nav-button" data-view="system" data-roles="superadmin">System</button>
         </nav>
-        <div class="sidebar-footer">Lokal HTML-prototyp</div>
       </aside>
 
       <main class="main">
@@ -67,7 +66,7 @@
               <button class="dashboard-command-button" type="button" data-view-target="checkout">LÅNA</button>
               <button class="dashboard-command-button" type="button" data-view-target="pickup">HÄMTA ARTIKEL</button>
               <button class="dashboard-command-button" type="button" data-view-target="return">LÄMNA TILLBAKA</button>
-              <button class="dashboard-command-button" type="button" data-view-target="consumable">ANMÄL SLUT AV FÖRBRUKNINGSVARA</button>
+              <button class="dashboard-command-button" type="button" data-view-target="consumable">ANMÄL SLUT PÅ LAGER</button>
               <button class="dashboard-command-button" id="dashboardMyLoansButton" type="button">MINA UTLÅNINGAR</button>
             </section>
           </div>
@@ -133,12 +132,15 @@
               <span>Saknas användaren?</span>
               <button class="link-button" id="openQuickUserButton" type="button">Skapa användare</button>
             </div>
-            <label class="suggestion-field">
-              Sök användare
-              <input id="checkoutUserSearch" placeholder="Namn, alias, e-post eller avdelning" autocomplete="off">
-              <input id="checkoutUser" type="hidden">
-              <div class="inline-suggestions" id="checkoutUserSuggestions"></div>
-            </label>
+            <div class="checkout-user-search-row">
+              <label class="suggestion-field">
+                Sök användare
+                <input id="checkoutUserSearch" placeholder="Namn, alias, e-post eller avdelning" autocomplete="off">
+                <input id="checkoutUser" type="hidden">
+                <div class="inline-suggestions" id="checkoutUserSuggestions"></div>
+              </label>
+              <button class="secondary-button user-scan-button" id="openUserScanButton" type="button">Scanna användare</button>
+            </div>
             <div class="selected-user-details" id="checkoutUserDetails">
               <label>
                 Företag
@@ -165,11 +167,14 @@
                 <input id="checkoutUserAlias" readonly>
               </label>
             </div>
-            <label class="suggestion-field">
-              Sök objekt
-              <input id="checkoutObjectId" placeholder="Objekt-ID eller QR-ID, t.ex. OBJ-1001" autocomplete="off">
-              <div class="inline-suggestions" id="checkoutObjectSuggestions"></div>
-            </label>
+            <div class="checkout-object-search-row">
+              <label class="suggestion-field">
+                Sök objekt
+                <input id="checkoutObjectId" placeholder="Objekt-ID eller QR-ID, t.ex. OBJ-1001" autocomplete="off">
+                <div class="inline-suggestions" id="checkoutObjectSuggestions"></div>
+              </label>
+              <button class="secondary-button object-scan-button" id="openObjectScanButton" type="button">Scanna objekt</button>
+            </div>
             <label>
               Lagerfilter
               <select id="checkoutStockFilter">
@@ -311,7 +316,7 @@
         </section>
 
         <section class="view" id="consumableView">
-          <h1>Anmäl slut av förbrukningsvara</h1>
+          <h1>Anmäl slut på lager</h1>
           <div class="consumable-layout">
             <form class="admin-card consumable-form" id="consumableReportForm">
               <label class="suggestion-field">
@@ -320,19 +325,7 @@
                 <input id="consumableObjectId" type="hidden">
                 <div class="inline-suggestions" id="consumableObjectSuggestions"></div>
               </label>
-              <label>
-                Antal kvar
-                <select id="consumableQuantity" data-number-select data-min="0" data-max="100" data-default="0"></select>
-              </label>
-              <label>
-                Rapporterad av
-                <input id="consumableReportedBy" placeholder="Namn eller avdelning" autocomplete="off">
-              </label>
-              <label>
-                Kommentar
-                <textarea id="consumableMessage" rows="4" placeholder="Exempel: sista förpackningen är tagen"></textarea>
-              </label>
-              <button class="primary-button" type="submit">Skicka rapport</button>
+              <button class="primary-button" type="submit">Anmäl slut på lager</button>
             </form>
             <section class="admin-card">
               <div class="section-title-row">
@@ -391,14 +384,6 @@
           <div class="filters jobs-filters">
             <button class="secondary-button jobs-collapse-button" id="toggleJobsCollapsed" type="button" aria-pressed="false">Dölj jobb</button>
             <input id="jobSearch" placeholder="Filtrera på jobb, objekt, låntagare, avdelning, Engine ID eller Project no" autocomplete="off">
-            <select id="jobStatusFilter">
-              <option value="all">Alla statusar</option>
-              <option value="requested">Request</option>
-              <option value="prepared">Ready for pickup</option>
-              <option value="loaned">Lånad</option>
-              <option value="returned">Återlämnad</option>
-              <option value="stocked">Lagerförd</option>
-            </select>
             <select id="jobDateSort">
               <option value="updated_desc">Senast ändrad först</option>
               <option value="lending_asc">Utlåningsdatum stigande</option>
@@ -697,6 +682,28 @@
                     <small>dagar</small>
                   </span>
                 </label>
+                <label class="settings-option-row settings-option-row-with-input">
+                  <span>
+                    <strong>Spärra låntagare med sena lån</strong>
+                    <small>Stoppar nya lån och låneförfrågningar när användaren har X eller fler aktiva sena lån.</small>
+                  </span>
+                  <span class="settings-inline-control">
+                    <input id="overdueBlockEnabled" type="checkbox">
+                    <select id="overdueBlockLimit" aria-label="Antal sena lån innan spärr">
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3" selected>3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                      <option value="7">7</option>
+                      <option value="8">8</option>
+                      <option value="9">9</option>
+                      <option value="10">10</option>
+                    </select>
+                    <small>sena lån</small>
+                  </span>
+                </label>
               </div>
               <section class="notification-recipient-panel" aria-labelledby="notificationRecipientsTitle">
                 <div>
@@ -901,6 +908,10 @@
                   <span>Rollnivå</span>
                   <strong>SuperAdmin</strong>
                 </div>
+                <div class="settings-summary-item">
+                  <span>Lånespärr</span>
+                  <strong id="borrowBlockSummary">Av</strong>
+                </div>
               </div>
             </section>
 
@@ -979,6 +990,62 @@
       </section>
     </div>
 
+    <div class="modal-layer" id="userScanModal" aria-hidden="true">
+      <div class="modal-backdrop" id="userScanBackdrop"></div>
+      <section class="modal-panel user-scan-panel" role="dialog" aria-modal="true" aria-labelledby="userScanTitle">
+        <div class="modal-header">
+          <h2 id="userScanTitle">Scanna användare</h2>
+          <button class="search-clear-button" id="closeUserScanButton" type="button" aria-label="Stäng">×</button>
+        </div>
+        <div class="user-scan-content">
+          <div class="user-scan-visual" aria-hidden="true">
+            <div class="scanner-device">
+              <div class="scanner-slot"></div>
+              <div class="scanner-signal scanner-signal-one"></div>
+              <div class="scanner-signal scanner-signal-two"></div>
+              <div class="scanner-card">
+                <span></span>
+                <span></span>
+              </div>
+              <div class="scanner-light"></div>
+            </div>
+          </div>
+          <div class="user-scan-status">
+            <strong id="userScanStatusTitle">Väntar på kort</strong>
+            <p id="userScanStatusText">RFID-läsare kopplas här i en senare version och fyller i användaren automatiskt.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-layer" id="objectScanModal" aria-hidden="true">
+      <div class="modal-backdrop" id="objectScanBackdrop"></div>
+      <section class="modal-panel user-scan-panel" role="dialog" aria-modal="true" aria-labelledby="objectScanTitle">
+        <div class="modal-header">
+          <h2 id="objectScanTitle">Scanna objekt</h2>
+          <button class="search-clear-button" id="closeObjectScanButton" type="button" aria-label="Stäng">×</button>
+        </div>
+        <div class="user-scan-content">
+          <div class="user-scan-visual" aria-hidden="true">
+            <div class="scanner-device">
+              <div class="scanner-slot"></div>
+              <div class="scanner-signal scanner-signal-one"></div>
+              <div class="scanner-signal scanner-signal-two"></div>
+              <div class="scanner-card">
+                <span></span>
+                <span></span>
+              </div>
+              <div class="scanner-light"></div>
+            </div>
+          </div>
+          <div class="user-scan-status">
+            <strong id="objectScanStatusTitle">Väntar på objekt</strong>
+            <p id="objectScanStatusText">RFID- eller streckkodsläsare kopplas här i en senare version och fyller i utlåningsobjektet automatiskt.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <div class="search-layer" id="searchLayer" aria-hidden="true">
       <div class="search-backdrop" id="searchBackdrop"></div>
       <section class="search-panel" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
@@ -1004,7 +1071,14 @@
       </section>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="charts.js"></script>
-    <script src="/app.js"></script>
+    <script src="/js/charts.js"></script>
+    <script src="/js/translations.js"></script>
+    <script src="/js/i18n.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/ui-utils.js"></script>
+    <script src="/js/search.js"></script>
+    <script src="/js/loan-views.js"></script>
+    <script src="/js/actions.js"></script>
+    <script src="/js/app.js"></script>
   </body>
 </html>

@@ -1,0 +1,152 @@
+# Uppdates
+
+Nuvarande version: V1.1.7
+Senast uppdaterad: 2026-05-27
+
+Den har filen anvands som projektlogg. Vid varje update:
+
+1. Oka versionsnumret.
+2. Lagg till en ny version hogst upp i listan.
+3. Skriv kort vad som andrades, fixades och verifierades.
+
+Versionering:
+
+- Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
+- Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
+- Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.1.7 - 2026-05-27
+
+Andrat:
+
+- Lade till knappen Scanna objekt bredvid objektsokningen i Lana-vyn.
+- Lade till en scanner-dialog for framtida RFID- eller streckkodslasning av utlaningsobjekt.
+
+Verifierat:
+
+- Backend kompilerar.
+- Startsidan laddar fran backend och innehaller Scanna objekt-knappen.
+
+## V1.1.6 - 2026-05-27
+
+Andrat:
+
+- Lade till knappen Scanna anvandare bredvid anvandarsokningen i Lana-vyn.
+- Lade till en scanner-dialog med visuell RFID-lasarplats for framtida kortlasning.
+
+Verifierat:
+
+- Backend kompilerar.
+- Startsidan laddar fran backend och innehaller Scanna anvandare-knappen.
+
+## V1.1.5 - 2026-05-27
+
+Andrat:
+
+- Tydliggjorde Tips & tricks-kortet for Mina utlaningar med ny rubrik och text.
+
+Verifierat:
+
+- Backend kompilerar.
+
+## V1.1.4 - 2026-05-27
+
+Andrat:
+
+- Tog bort texten Lokal HTML-prototyp fran sidomenyn.
+
+Verifierat:
+
+- Backend kompilerar.
+- Texten och dess frontend-referenser ar borttagna.
+
+## V1.1.3 - 2026-05-27
+
+Andrat:
+
+- Tog bort statusfiltret fran Jobb-vyn.
+- Justerade Jobb-vyns filterrad sa sok, sortering och knapp ligger kvar snyggt.
+
+Verifierat:
+
+- Backend kompilerar.
+- Jobb-sidan laddas fran backend utan statusfiltret i HTML.
+
+## V1.1.2 - 2026-05-27
+
+Andrat:
+
+- Forenklade Anmal slut pa lager till sok artikel och en knapp.
+- Tog bort antal kvar, rapporterad av och kommentar fran forbrukningsrapporten.
+- En forbrukningsrapport satter nu artikelns lagersaldo till 0.
+
+Verifierat:
+
+- Backend kompilerar.
+- API:t for objekt svarar med JSON vid valideringsfel.
+
+## V1.1.1 - 2026-05-27
+
+Andrat:
+
+- Skickar med forbrukningsflaggan nar objekt sparas fran adminformular.
+- Visar forbrukningsflaggan korrekt nar ett objekt oppnas for redigering.
+- Ersatte webblasarfel som "Failed to fetch" med tydligare instruktion om att starta backend.
+
+Verifierat:
+
+- Backend kompilerar.
+- API:t for objekt svarar med JSON vid valideringsfel.
+- JavaScript-syntaxkontroll kunde inte koras eftersom Node.js saknas i miljon.
+
+## V1.1.0 - 2026-05-21
+
+Andrat:
+
+- Lade till admininstallning for att sparra nya lan nar en anvandare har for manga sena aktiva lan.
+- Sparren galler direktlan, laneforfragningar och jobb som markeras som utlanade.
+- Lade till sammanfattning for lanesparren i System-vyn.
+- Lanesparren ar aktiv som standard med grans 3 sena lan.
+
+Verifierat:
+
+- Backend kompilerar.
+- Lanesparren stoppar nar antal sena lan nar gransvarde i backend-kontroll.
+- JavaScript-syntaxkontroll kunde inte koras eftersom Node.js saknas i miljon.
+
+## V1.0.1 - 2026-05-19
+
+Andrat:
+
+- Gjorde notiser/toasts tydligare med rubrik, ikon, farg per typ och stangknapp.
+- Notiser klassas nu som Klart, Saknar uppgift, Nagot gick fel eller Information.
+- Fel och varningar visas langre sa anvandaren hinner lasa.
+- Rensade frontend-kod som pekade pa gamla element som inte finns kvar.
+
+Fixat:
+
+- Fixade saknade imports som kunde krascha anvandare och objekt.
+- Fixade trasiga statusstrangar for Tillganglig och Lag niva.
+- Lade till normalisering av gamla trasiga statusvarden vid databasstart.
+- Fixade att nytt jobb och aterlamnat lan skickar notiser till ratt mottagarlista.
+- Fixade svensk text i vissa backend-notiser och paminnelser.
+
+Verifierat:
+
+- Backend kompilerar.
+- Smoketest for anvandare, objekt, forbrukningsrapport, lanejobb och retur fungerar.
+- Notisflode skickar till ratt mottagarregel.
+- Frontend-koll visar inga saknade id-referenser.
+
+## V1.0.0 - Baseline
+
+Utgangslage innan denna logg borjade foras.
+
+Projektet innehaller:
+
+- Python-backend med SQLite.
+- HTML/CSS/JavaScript-frontend.
+- Utlansflode for objekt.
+- Jobbflode for laneforfragningar.
+- Adminvyer for objekt, anvandare, statistik och systeminstallningar.
+- Grundlaggande notissystem via SMTP-installningar.

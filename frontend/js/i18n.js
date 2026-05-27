@@ -1,0 +1,261 @@
+// Frontend translation helpers.
+function t(key, values = {}) {
+  const text = translations[state.language]?.[key] || translations.sv[key] || key;
+  return Object.entries(values).reduce((result, [name, value]) => result.replaceAll(`{${name}}`, value), text);
+}
+
+function statusText(status) {
+  const statusKeys = {
+    "Tillgänglig": "status.available",
+    "Låg nivå": "status.low",
+    "Slut": "status.out",
+    "Aktiv": "status.active",
+    "Sen": "status.late",
+  };
+  return t(statusKeys[status] || status);
+}
+
+function jobStatusText(status) {
+  return t(`jobs.status.${status}`);
+}
+
+function setText(selector, key) {
+  const element = $(selector);
+  if (element) element.textContent = t(key);
+}
+
+function setPlaceholder(selector, key) {
+  const element = $(selector);
+  if (element) element.placeholder = t(key);
+}
+
+function setLabel(inputId, key) {
+  const input = $(`#${inputId}`);
+  const label = input?.closest("label");
+  if (!label) return;
+  const textNode = Array.from(label.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (textNode) textNode.textContent = `\n              ${t(key)}\n              `;
+}
+
+function setOptionText(selectId, value, key) {
+  const option = $(`#${selectId} option[value="${value}"]`);
+  if (option) option.textContent = t(key);
+}
+
+function setHeaderTexts(selector, keys) {
+  document.querySelectorAll(`${selector} th`).forEach((header, index) => {
+    if (keys[index]) header.textContent = t(keys[index]);
+  });
+}
+
+function applyTranslations() {
+  document.documentElement.lang = state.language;
+  document.querySelectorAll(".language-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.language === state.language);
+  });
+
+  setText(".brand-subtitle", "brand.subtitle");
+  document.querySelectorAll(".nav-button").forEach((button) => {
+    setText(`.nav-button[data-view="${button.dataset.view}"]`, viewTitles[button.dataset.view]);
+  });
+  setText("#openSearchButton", "topbar.search");
+  setLabel("roleSelect", "topbar.role");
+  setOptionText("roleSelect", "operator", "role.operator");
+  setOptionText("roleSelect", "admin", "role.admin");
+  setOptionText("roleSelect", "superadmin", "role.superadmin");
+  setOptionText("newUserRole", "operator", "role.operator");
+  setOptionText("newUserRole", "admin", "role.admin");
+  setOptionText("newUserRole", "superadmin", "role.superadmin");
+
+  setText("#dashboardMyLoansButton", "dashboard.myLoans");
+  renderDashboardTips();
+
+  setText("#statisticsView h1", "nav.statistics");
+  setText(".stat-card:nth-of-type(1) span", "stats.objects");
+  setText(".stat-card:nth-of-type(2) span", "stats.loaned");
+  setText(".stat-card:nth-of-type(3) span", "stats.overdue");
+  setText(".stat-card:nth-of-type(4) span", "stats.low");
+  setText(".stat-card:nth-of-type(5) span", "stats.readyPickup");
+  setText(".stat-card:nth-of-type(6) span", "stats.openJobs");
+
+  setText("#checkoutView h1", "nav.checkout");
+  setText(".checkout-action-row span", "checkout.missingUser");
+  setText("#openQuickUserButton", "checkout.createUser");
+  setText("#openUserScanButton", "checkout.scanUser");
+  setText("#userScanTitle", "checkout.scanUser");
+  setText("#userScanStatusTitle", "checkout.scanWaiting");
+  setText("#userScanStatusText", "checkout.scanFuture");
+  $("#closeUserScanButton")?.setAttribute("aria-label", t("search.close"));
+  setText("#openObjectScanButton", "checkout.scanObject");
+  setText("#objectScanTitle", "checkout.scanObject");
+  setText("#objectScanStatusTitle", "checkout.scanObjectWaiting");
+  setText("#objectScanStatusText", "checkout.scanObjectFuture");
+  $("#closeObjectScanButton")?.setAttribute("aria-label", t("search.close"));
+  setLabel("checkoutUserSearch", "checkout.searchUser");
+  setPlaceholder("#checkoutUserSearch", "checkout.searchUser");
+  setLabel("checkoutObjectId", "checkout.searchObject");
+  setPlaceholder("#checkoutObjectId", "checkout.searchObject");
+  setLabel("checkoutStockFilter", "checkout.stockFilter");
+  setOptionText("checkoutStockFilter", "in_stock", "checkout.inStock");
+  setOptionText("checkoutStockFilter", "low_stock", "checkout.lowStock");
+  setOptionText("checkoutStockFilter", "out_of_stock", "checkout.outOfStock");
+  setOptionText("checkoutStockFilter", "all", "checkout.allObjects");
+  setText("#requestLoanButton", "action.requestLoan");
+
+  [
+    ["checkoutUserCompany", "field.company"],
+    ["checkoutUserGroup", "field.group"],
+    ["checkoutUserDepartment", "field.department"],
+    ["checkoutUserEmail", "field.email"],
+    ["checkoutUserPhone", "field.phone"],
+    ["checkoutUserAlias", "field.alias"],
+    ["checkoutObjectName", "field.name"],
+    ["checkoutObjectInstrumentId", "field.instrumentId"],
+    ["checkoutObjectCategory", "field.category"],
+    ["checkoutObjectType", "field.type"],
+    ["checkoutObjectDescription", "field.description"],
+    ["checkoutObjectLocation", "field.location"],
+    ["checkoutObjectLift", "field.lift"],
+    ["checkoutObjectQuantity", "field.stockQty"],
+    ["checkoutObjectStatus", "field.status"],
+    ["checkoutEngineId", "field.engineId"],
+    ["checkoutProjectNumber", "field.projectNumber"],
+    ["checkoutQuantity", "field.quantity"],
+    ["checkoutLendingDate", "field.lendingDate"],
+    ["checkoutDue", "field.returnDate"],
+    ["consumableObjectSearch", "field.article"],
+    ["returnUserSearch", "nav.return"],
+    ["newUserFirstName", "field.firstName"],
+    ["newUserLastName", "field.lastName"],
+    ["newUserEmail", "field.email"],
+    ["newUserPhone", "field.phone"],
+    ["newUserCompany", "field.company"],
+    ["newUserAlias", "field.alias"],
+    ["newUserDepartment", "field.department"],
+    ["newUserDepartmentName", "field.group"],
+    ["newUserRole", "topbar.role"],
+    ["quickUserFirstName", "field.firstName"],
+    ["quickUserLastName", "field.lastName"],
+    ["quickUserEmail", "field.email"],
+    ["quickUserPhone", "field.phone"],
+    ["quickUserCompany", "field.company"],
+    ["quickUserAlias", "field.alias"],
+    ["quickUserDepartment", "field.department"],
+    ["quickUserDepartmentName", "field.group"],
+    ["newObjectId", "field.instrumentId"],
+    ["newObjectName", "field.name"],
+    ["newObjectCategory", "field.category"],
+    ["newObjectType", "field.type"],
+    ["newObjectDescription", "field.description"],
+    ["newObjectArticle", "table.article"],
+    ["newObjectSupplierArticle", "table.supplierArticle"],
+    ["newObjectLocation", "field.location"],
+    ["newObjectStorageLocation2", "table.storage2"],
+    ["newObjectTornado", "table.store"],
+    ["newObjectDoor", "field.lift"],
+    ["newObjectBelongsToInstrument", "table.belongsInstrument"],
+    ["newObjectDevice", "Device"],
+    ["newObjectBelongsTo", "table.belongsTo"],
+    ["newObjectLastChanged", "table.lastChanged"],
+    ["newObjectSearchWords", "table.keywords"],
+    ["newObjectTrayFor", "table.trayFor"],
+    ["newObjectLiftTray", "table.liftTray"],
+    ["newObjectTotal", "field.total"],
+    ["newObjectAvailable", "table.balance"],
+    ["newObjectMin", "table.reorderPoint"],
+  ].forEach(([id, key]) => setLabel(id, key));
+
+  setText("#returnView h1", "nav.return");
+  setPlaceholder("#returnUserSearch", "checkout.searchUser");
+  setText("#pickupView h1", "nav.pickup");
+  setLabel("pickupUserSearch", "checkout.searchUser");
+  setPlaceholder("#pickupUserSearch", "checkout.searchUser");
+  setText("#myLoansView h1", "nav.myLoans");
+  setLabel("myLoansUserSearch", "checkout.searchUser");
+  setPlaceholder("#myLoansUserSearch", "checkout.searchUser");
+  setText("#consumableView h1", "nav.consumable");
+  setText("#objectsView h1", "nav.objects");
+  setPlaceholder("#objectSearch", "objects.searchPlaceholder");
+  setHeaderTexts("#objectsView table", [
+    "table.image",
+    "field.category",
+    "field.type",
+    "field.description",
+    "table.article",
+    "field.name",
+    "table.supplierArticle",
+    "table.balance",
+    "table.reorderPoint",
+    "table.storage",
+    "table.store",
+    "table.belongsInstrument",
+    "Device",
+    "table.belongsTo",
+    "table.lastChanged",
+    "table.keywords",
+    "table.trayFor",
+    "table.storage2",
+    "table.liftTray",
+    "field.status",
+    "",
+  ]);
+  setText("#loansView h1", "nav.loans");
+  setText("#jobsView h1", "nav.jobs");
+  updateJobsCollapseButton();
+
+  setHeaderTexts("#loansView table", [
+    "table.loanId",
+    "field.instrumentId",
+    "table.object",
+    "table.borrower",
+    "table.deptNo",
+    "field.engineId",
+    "table.projectNo",
+    "field.quantity",
+    "field.lendingDate",
+    "field.returnDate",
+    "field.status",
+    "table.receipt",
+  ]);
+
+	  setText("#adminView h1", "nav.admin");
+	  setText("#objectFormTitle", "admin.addObject");
+	  setText("#saveObjectButton", "action.saveObject");
+	  setText("#cancelObjectEditButton", "action.cancel");
+	  setText("#cancelUserEditButton", "action.cancel");
+	  const adminCards = document.querySelectorAll("#adminView .admin-card");
+	  if (adminCards[1]?.querySelector("h2")) adminCards[1].querySelector("h2").textContent = t("admin.createUser");
+	  if (!state.editingUserId) setText("#saveUserButton", "admin.createUser");
+	  setText("#adminView .admin-subtitle", "admin.users");
+	  setHeaderTexts("#adminView .compact-table-wrap table", [
+	    "field.name",
+    "field.alias",
+    "field.email",
+    "field.phone",
+	    "field.company",
+	    "field.department",
+	    "topbar.role",
+	    "",
+	  ]);
+  setText("#logView h1", "nav.log");
+  setHeaderTexts("#logView table", ["table.time", "table.eventType", "table.message"]);
+  setText("#systemView h1", "nav.system");
+
+  setText("#quickUserTitle", "admin.createUser");
+  setText("#quickUserForm .primary-button", "modal.createAndSelect");
+  setText("#printJobButton", "action.print");
+  setText("#exportJobExcelButton", "action.exportExcel");
+  setPlaceholder("#globalSearchInput", "search.placeholder");
+  setText("#submitSearchButton", "topbar.search");
+  setText("#closeSearchButton", "search.close");
+  $("#clearSearchButton")?.setAttribute("aria-label", t("search.clearLabel"));
+  setText("#searchTitle", "search.results");
+  setText(".search-section-title", "search.objects");
+  const searchTabs = document.querySelectorAll(".search-tab");
+  if (searchTabs[0]) searchTabs[0].textContent = `${t("search.all")} (0)`;
+  if (searchTabs[1]) searchTabs[1].textContent = `${t("search.objects")} (0)`;
+  if (searchTabs[2]) searchTabs[2].textContent = t("search.loans");
+  if (searchTabs[3]) searchTabs[3].textContent = t("search.log");
+  $("#searchEmpty").textContent = t("search.empty");
+
+}

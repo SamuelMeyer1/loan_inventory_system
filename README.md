@@ -97,11 +97,31 @@ loan_inventory_system/
   main.py
   backend/
     database.py
-    services.py
     server.py
     seed_data.py
+    services/
+      __init__.py
+      common.py
+      inventory.py
+      loans.py
+      notifications.py
+      stats.py
+      users.py
   frontend/
     index.html
     styles.css
-    app.js
+    js/
+      app.js
+      actions.js
+      api.js
+      charts.js
+      i18n.js
+      loan-views.js
+      search.js
+      translations.js
+      ui-utils.js
+    sample-images/
+  scripts/
+  hardware/
+  data/
 ```

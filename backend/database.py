@@ -177,6 +177,17 @@ def initialize_database() -> None:
             if column_name not in loan_columns:
                 db.execute(f"ALTER TABLE loans ADD COLUMN {column_name} {column_type}")
 
+        status_replacements = (
+            ("L?g niv?", "Låg nivå"),
+            ("L\u00c3\u00a5g niv\u00c3\u00a5", "Låg nivå"),
+            ("Tillg?nglig", "Tillgänglig"),
+            ("Tillg\u00c3\u00a4nglig", "Tillgänglig"),
+        )
+        db.executemany(
+            "UPDATE objects SET status = ? WHERE status = ?",
+            [(replacement, broken) for broken, replacement in status_replacements],
+        )
+
 
 def rows(query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
     with connect() as db:
