@@ -43,12 +43,28 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "data": services.add_object(payload)})
             elif parsed.path == "/api/users":
                 self.send_json({"ok": True, "data": services.add_user(payload)})
+            elif parsed.path == "/api/users/borrow-override":
+                self.send_json({"ok": True, "data": services.set_user_borrow_override(payload)})
+            elif parsed.path == "/api/users/card":
+                self.send_json({"ok": True, "data": services.set_user_card(payload)})
+            elif parsed.path == "/api/smartcard/read":
+                self.send_json({"ok": True, "data": {"uid": services.read_card_uid()}})
+            elif parsed.path == "/api/users/scan-card":
+                self.send_json({"ok": True, "data": services.read_user_card()})
+            elif parsed.path == "/api/groups":
+                self.send_json({"ok": True, "data": services.create_group(payload)})
             elif parsed.path == "/api/loan-requests":
                 self.send_json({"ok": True, "data": services.create_loan_request(payload)})
             elif parsed.path == "/api/consumable-reports":
                 self.send_json({"ok": True, "data": services.create_consumable_report(payload)})
             elif parsed.path == "/api/reminders/send":
                 self.send_json({"ok": True, "data": services.send_loan_reminders()})
+            elif parsed.path == "/api/loans/reminder":
+                self.send_json({"ok": True, "data": services.send_loan_reminder(int(payload.get("loan_id", 0)))})
+            elif parsed.path == "/api/loan-requests/pickup-email":
+                self.send_json({"ok": True, "data": services.send_pickup_ready_email(int(payload.get("request_id", 0)))})
+            elif parsed.path == "/api/teams/test":
+                self.send_json({"ok": True, "data": services.send_teams_test_message()})
             else:
                 self.send_error(404)
         except ValueError as error:
@@ -58,7 +74,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in ("/api/objects", "/api/users", "/api/loan-requests"):
+        if parsed.path not in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests"):
             self.send_error(404)
             return
 
@@ -67,6 +83,9 @@ class AppHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/loan-requests":
                 request_id = int(query.get("request_id", ["0"])[0])
                 self.send_json({"ok": True, "data": services.delete_loan_request(request_id)})
+            elif parsed.path == "/api/groups":
+                group_id = int(query.get("group_id", ["0"])[0])
+                self.send_json({"ok": True, "data": services.delete_group(group_id)})
             elif parsed.path == "/api/users":
                 user_id = query.get("user_id", [""])[0]
                 self.send_json({"ok": True, "data": services.remove_user(user_id)})
@@ -84,6 +103,15 @@ class AppHandler(BaseHTTPRequestHandler):
             try:
                 payload = self.read_json()
                 self.send_json({"ok": True, "data": services.update_loan_request_status(payload)})
+            except ValueError as error:
+                self.send_json({"ok": False, "error": str(error)}, status=400)
+            except Exception as error:
+                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+            return
+        if parsed.path == "/api/loan-requests/details":
+            try:
+                payload = self.read_json()
+                self.send_json({"ok": True, "data": services.update_loan_request_details(payload)})
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
@@ -111,6 +139,15 @@ class AppHandler(BaseHTTPRequestHandler):
             try:
                 payload = self.read_json()
                 self.send_json({"ok": True, "data": services.update_user(payload)})
+            except ValueError as error:
+                self.send_json({"ok": False, "error": str(error)}, status=400)
+            except Exception as error:
+                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+            return
+        if parsed.path == "/api/groups":
+            try:
+                payload = self.read_json()
+                self.send_json({"ok": True, "data": services.update_group(payload)})
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
@@ -152,6 +189,8 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/users":
             include_inactive = query.get("include_inactive", ["0"])[0] in ("1", "true", "yes")
             self.send_json({"ok": True, "data": services.list_users(include_inactive)})
+        elif path == "/api/groups":
+            self.send_json({"ok": True, "data": services.list_groups()})
         elif path == "/api/loans":
             self.send_json({"ok": True, "data": services.list_active_loans()})
         elif path == "/api/loan-requests":

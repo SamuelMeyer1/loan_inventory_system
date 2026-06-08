@@ -50,8 +50,13 @@ function setHeaderTexts(selector, keys) {
 
 function applyTranslations() {
   document.documentElement.lang = state.language;
+  const languageToggle = document.querySelector(".language-toggle");
+  if (languageToggle) languageToggle.setAttribute("aria-label", t("topbar.language"));
+  setText(".language-label", "topbar.language");
   document.querySelectorAll(".language-button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.language === state.language);
+    const isActive = button.dataset.language === state.language;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
 
   setText(".brand-subtitle", "brand.subtitle");
@@ -67,6 +72,10 @@ function applyTranslations() {
   setOptionText("newUserRole", "admin", "role.admin");
   setOptionText("newUserRole", "superadmin", "role.superadmin");
 
+  setText(".dashboard-command-button[data-view-target=\"checkout\"]", "dashboard.borrow");
+  setText(".dashboard-command-button[data-view-target=\"pickup\"]", "dashboard.pickup");
+  setText(".dashboard-command-button[data-view-target=\"return\"]", "dashboard.return");
+  setText(".dashboard-command-button[data-view-target=\"consumable\"]", "dashboard.reportConsumable");
   setText("#dashboardMyLoansButton", "dashboard.myLoans");
   renderDashboardTips();
 
@@ -95,11 +104,6 @@ function applyTranslations() {
   setPlaceholder("#checkoutUserSearch", "checkout.searchUser");
   setLabel("checkoutObjectId", "checkout.searchObject");
   setPlaceholder("#checkoutObjectId", "checkout.searchObject");
-  setLabel("checkoutStockFilter", "checkout.stockFilter");
-  setOptionText("checkoutStockFilter", "in_stock", "checkout.inStock");
-  setOptionText("checkoutStockFilter", "low_stock", "checkout.lowStock");
-  setOptionText("checkoutStockFilter", "out_of_stock", "checkout.outOfStock");
-  setOptionText("checkoutStockFilter", "all", "checkout.allObjects");
   setText("#requestLoanButton", "action.requestLoan");
 
   [
@@ -174,6 +178,7 @@ function applyTranslations() {
   setLabel("myLoansUserSearch", "checkout.searchUser");
   setPlaceholder("#myLoansUserSearch", "checkout.searchUser");
   setText("#consumableView h1", "nav.consumable");
+  setText("#consumableSubmitButton", "action.reportConsumableEmpty");
   setText("#objectsView h1", "nav.objects");
   setPlaceholder("#objectSearch", "objects.searchPlaceholder");
   setHeaderTexts("#objectsView table", [
@@ -215,6 +220,8 @@ function applyTranslations() {
     "field.lendingDate",
     "field.returnDate",
     "field.status",
+    "table.lastReminder",
+    "action.sendReminder",
     "table.receipt",
   ]);
 
@@ -241,10 +248,11 @@ function applyTranslations() {
   setHeaderTexts("#logView table", ["table.time", "table.eventType", "table.message"]);
   setText("#systemView h1", "nav.system");
 
-  setText("#quickUserTitle", "admin.createUser");
-  setText("#quickUserForm .primary-button", "modal.createAndSelect");
-  setText("#printJobButton", "action.print");
-  setText("#exportJobExcelButton", "action.exportExcel");
+	  setText("#quickUserTitle", "admin.createUser");
+	  setText("#quickUserForm .primary-button", "modal.createAndSelect");
+	  setText("#printJobButton", "action.print");
+	  setText("#exportJobExcelButton", "action.exportExcel");
+  setText("#exportObjectsExcelButton", "action.exportExcel");
   setPlaceholder("#globalSearchInput", "search.placeholder");
   setText("#submitSearchButton", "topbar.search");
   setText("#closeSearchButton", "search.close");

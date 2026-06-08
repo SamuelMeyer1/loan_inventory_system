@@ -66,10 +66,12 @@ def initialize_database() -> None:
                 alias TEXT,
                 department TEXT,
                 department_name TEXT,
+                rfid_code TEXT,
                 role TEXT NOT NULL DEFAULT 'operator',
                 created_at TEXT,
                 updated_at TEXT,
-                active INTEGER NOT NULL DEFAULT 1
+                active INTEGER NOT NULL DEFAULT 1,
+                borrow_override INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS loans (
@@ -128,6 +130,14 @@ def initialize_database() -> None:
                 value TEXT NOT NULL,
                 updated_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS user_groups (
+                group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                department TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
             """
         )
         columns = [column["name"] for column in db.execute("PRAGMA table_info(objects)").fetchall()]
@@ -159,9 +169,11 @@ def initialize_database() -> None:
             "company": "TEXT",
             "alias": "TEXT",
             "department_name": "TEXT",
+            "rfid_code": "TEXT",
             "role": "TEXT NOT NULL DEFAULT 'operator'",
             "created_at": "TEXT",
             "updated_at": "TEXT",
+            "borrow_override": "INTEGER NOT NULL DEFAULT 0",
         }
         for column_name, column_type in missing_user_columns.items():
             if column_name not in user_columns:
@@ -172,10 +184,27 @@ def initialize_database() -> None:
             "engine_id": "TEXT",
             "project_number": "TEXT",
             "loan_request_id": "INTEGER",
+            "last_reminder_sent_at": "TEXT",
         }
         for column_name, column_type in missing_loan_columns.items():
             if column_name not in loan_columns:
                 db.execute(f"ALTER TABLE loans ADD COLUMN {column_name} {column_type}")
+
+        request_columns = [column["name"] for column in db.execute("PRAGMA table_info(loan_requests)").fetchall()]
+        missing_request_columns = {
+            "pickup_ready_email_sent_at": "TEXT",
+        }
+        for column_name, column_type in missing_request_columns.items():
+            if column_name not in request_columns:
+                db.execute(f"ALTER TABLE loan_requests ADD COLUMN {column_name} {column_type}")
+
+        group_columns = [column["name"] for column in db.execute("PRAGMA table_info(user_groups)").fetchall()]
+        missing_group_columns = {
+            "department": "TEXT",
+        }
+        for column_name, column_type in missing_group_columns.items():
+            if column_name not in group_columns:
+                db.execute(f"ALTER TABLE user_groups ADD COLUMN {column_name} {column_type}")
 
         status_replacements = (
             ("L?g niv?", "Låg nivå"),
@@ -186,6 +215,34 @@ def initialize_database() -> None:
         db.executemany(
             "UPDATE objects SET status = ? WHERE status = ?",
             [(replacement, broken) for broken, replacement in status_replacements],
+        )
+
+        db.execute(
+            """
+            INSERT OR IGNORE INTO user_groups (name, department, created_at, updated_at)
+            SELECT trim(department_name), trim(COALESCE(MAX(department), '')), datetime('now', 'localtime'), datetime('now', 'localtime')
+            FROM users
+            WHERE department_name IS NOT NULL
+              AND trim(department_name) != ''
+            GROUP BY trim(department_name)
+            """
+        )
+        db.execute(
+            """
+            UPDATE user_groups
+            SET department = (
+                SELECT trim(COALESCE(MAX(users.department), ''))
+                FROM users
+                WHERE lower(users.department_name) = lower(user_groups.name)
+                  AND trim(COALESCE(users.department, '')) != ''
+            )
+            WHERE trim(COALESCE(department, '')) = ''
+              AND EXISTS (
+                SELECT 1 FROM users
+                WHERE lower(users.department_name) = lower(user_groups.name)
+                  AND trim(COALESCE(users.department, '')) != ''
+              )
+            """
         )
 
 

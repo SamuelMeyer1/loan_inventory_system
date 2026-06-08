@@ -5,6 +5,11 @@ let dueBucketsChart = null;
 let topBorrowersChart = null;
 
 const chartPalette = ["#2f6f8f", "#4f9f6f", "#d89a2b", "#b04a3a", "#6b7c93", "#8a63a8"];
+const chartBaseOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  devicePixelRatio: Math.max(2, window.devicePixelRatio || 1),
+};
 
 function chartRows(state, key) {
   return state.statistics?.[key] || [];
@@ -22,17 +27,17 @@ function renderStatusChart(state) {
   statusChart = new Chart(ctx, {
     type: "doughnut",
     data: {
-      labels: rows.map((row) => row.label || "Okänd"),
+      labels: rows.map((row) => row.label || "Okand"),
       datasets: [{ data: rows.map((row) => row.value), backgroundColor: chartPalette }],
     },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } },
+    options: { ...chartBaseOptions, plugins: { legend: { position: "bottom" } } },
   });
 }
 
 function renderJobStatusChart(state) {
   const ctx = document.getElementById("jobStatusChart");
   if (!ctx) return;
-  const labels = { requested: "Request", prepared: "Ready for pickup", loaned: "Lånad", returned: "Återlämnad", stocked: "Lagerförd" };
+  const labels = { requested: "Request", prepared: "Redo att hamta", loaned: "Lanad", returned: "Aterlamnad", stocked: "Lagerford" };
   const rows = chartRows(state, "job_status");
   resetChart(jobStatusChart);
   jobStatusChart = new Chart(ctx, {
@@ -41,7 +46,7 @@ function renderJobStatusChart(state) {
       labels: rows.map((row) => labels[row.label] || row.label),
       datasets: [{ label: "Jobb", data: rows.map((row) => row.value), backgroundColor: "#2f6f8f" }],
     },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+    options: { ...chartBaseOptions, plugins: { legend: { display: false } } },
   });
 }
 
@@ -55,11 +60,11 @@ function renderLoansPerMonthChart(state) {
     data: {
       labels: rows.map((row) => row.label),
       datasets: [
-        { label: "Lån", data: rows.map((row) => row.loans), borderColor: "#2f6f8f", backgroundColor: "rgba(47, 111, 143, 0.14)", tension: 0.3 },
+        { label: "Lan", data: rows.map((row) => row.loans), borderColor: "#2f6f8f", backgroundColor: "rgba(47, 111, 143, 0.14)", tension: 0.3 },
         { label: "Antal artiklar", data: rows.map((row) => row.quantity), borderColor: "#4f9f6f", backgroundColor: "rgba(79, 159, 111, 0.12)", tension: 0.3 },
       ],
     },
-    options: { responsive: true, maintainAspectRatio: false },
+    options: chartBaseOptions,
   });
 }
 
@@ -74,7 +79,7 @@ function renderDueBucketsChart(state) {
       labels: rows.map((row) => row.label),
       datasets: [{ data: rows.map((row) => row.value), backgroundColor: ["#b04a3a", "#d89a2b", "#2f6f8f", "#6b7c93"] }],
     },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } },
+    options: { ...chartBaseOptions, plugins: { legend: { position: "bottom" } } },
   });
 }
 
@@ -89,7 +94,7 @@ function renderTopBorrowersChart(state) {
       labels: rows.map((row) => row.label),
       datasets: [{ label: "Utlånade artiklar", data: rows.map((row) => row.value), backgroundColor: "#4f9f6f" }],
     },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: "y", plugins: { legend: { display: false } } },
+    options: { ...chartBaseOptions, indexAxis: "y", plugins: { legend: { display: false } } },
   });
 }
 

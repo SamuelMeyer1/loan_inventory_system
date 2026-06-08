@@ -52,6 +52,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function objectDisplayImage(item) {
+  return item?.display_image_data || item?.image_data || "";
+}
+
 function inferToastType(message) {
   const text = String(message || "").trim().toLowerCase();
   if (
@@ -148,4 +152,19 @@ function setDefaultDates() {
   returnDate.setDate(returnDate.getDate() + 7);
   $("#checkoutLendingDate").value = today.toISOString().slice(0, 10);
   $("#checkoutDue").value = returnDate.toISOString().slice(0, 10);
+  updateCheckoutDateLimit();
+}
+
+function updateCheckoutDateLimit() {
+  const lendingInput = $("#checkoutLendingDate");
+  const dueInput = $("#checkoutDue");
+  if (!lendingInput || !dueInput || !lendingInput.value) return;
+  const maxDays = Math.max(1, Number(state?.systemSettings?.max_loan_days || 90));
+  const maxDate = new Date(`${lendingInput.value}T00:00:00`);
+  maxDate.setDate(maxDate.getDate() + maxDays);
+  dueInput.min = lendingInput.value;
+  dueInput.max = maxDate.toISOString().slice(0, 10);
+  if (dueInput.value && dueInput.value > dueInput.max) {
+    dueInput.value = dueInput.max;
+  }
 }

@@ -5,6 +5,7 @@
 const state = {
   objects: [],
   users: [],
+  groups: [],
   loans: [],
   jobs: [],
   consumableReports: [],
@@ -13,6 +14,13 @@ const state = {
   statistics: {},
   editingObjectId: null,
   editingUserId: null,
+  editingGroupId: null,
+  cardUserId: null,
+  autoUserCardScanTimer: null,
+  autoUserCardScanBusy: false,
+  lastAutoUserCardUid: "",
+  lastAutoUserCardAt: 0,
+  lastUnknownAutoUserCardUid: "",
   role: "operator",
   language: localStorage.getItem("language") || "sv",
   selectedJobId: null,
@@ -44,6 +52,19 @@ const notificationRecipientKeys = [
   "notification_recipients_low_stock",
   "notification_recipients_empty_stock",
 ];
+const messageTemplateFields = [
+  ["messageNewJobSubject", "message_new_job_subject"],
+  ["messageNewJobBody", "message_new_job_body"],
+  ["messagePickupReadySubject", "message_pickup_ready_subject"],
+  ["messagePickupReadyBody", "message_pickup_ready_body"],
+  ["messageReturnedLoanSubject", "message_returned_loan_subject"],
+  ["messageReturnedLoanBody", "message_returned_loan_body"],
+  ["messageStockAlertSubject", "message_stock_alert_subject"],
+  ["messageStockAlertBody", "message_stock_alert_body"],
+  ["messageLoanReminderSubject", "message_loan_reminder_subject"],
+  ["messageLoanOverdueSubject", "message_loan_overdue_subject"],
+  ["messageLoanReminderBody", "message_loan_reminder_body"],
+];
 
 // Translations are defined in translations.js.
 
@@ -73,14 +94,16 @@ function setView(view) {
   if (view === "statistics") {
   renderAllStatisticsCharts(state);
 }
+  updateAutoUserCardScan();
 }
 
 async function refreshAll() {
-  const [stats, statistics, objects, users, loans, jobs, consumableReports, events, systemSettings] = await Promise.all([
+  const [stats, statistics, objects, users, groups, loans, jobs, consumableReports, events, systemSettings] = await Promise.all([
     api("/api/stats"),
     api("/api/statistics"),
     api("/api/objects"),
     api("/api/users"),
+    api("/api/groups"),
     api("/api/loans"),
     api("/api/loan-requests"),
     api("/api/consumable-reports"),
@@ -91,6 +114,7 @@ async function refreshAll() {
   state.objects = objects;
   state.statistics = statistics;
   state.users = users;
+  state.groups = groups;
   state.loans = loans;
   state.jobs = jobs;
   state.consumableReports = consumableReports;
@@ -99,6 +123,7 @@ async function refreshAll() {
 
   renderStats(stats);
   renderUsers();
+  renderGroups();
   renderFilters();
   renderObjects();
   renderAdminObjectsTable();
@@ -137,6 +162,22 @@ function renderStats(stats) {
   $("#lowStockStat").textContent = summary.low_stock || 0;
   $("#readyPickupStat").textContent = summary.ready_pickup || 0;
   $("#openJobsStat").textContent = summary.jobs || 0;
+  updateJobsNavBadge(summary.jobs || 0);
+  const warning = $("#statsDataWarning");
+  if (warning) {
+    const orphanCount = Number(summary.orphan_active_loans || 0);
+    warning.hidden = orphanCount <= 0;
+    warning.textContent = orphanCount > 0
+      ? `Datavarning: ${orphanCount} aktiva lån är kopplade till borttagna jobb. De syns därför i Aktiva lån/statistik men inte på Jobb.`
+      : "";
+  }
+}
+
+function updateJobsNavBadge(count) {
+  const badge = $("#jobsNavBadge");
+  if (!badge) return;
+  badge.textContent = String(count);
+  badge.hidden = Number(count) <= 0;
 }
 
 function renderSystemSettings() {
@@ -154,10 +195,15 @@ function renderSystemSettings() {
   setValue("#smtpPassword", "");
   setValue("#smtpFromAddress", settings.smtp_from_address || "");
   setChecked("#smtpUseTls", settings.smtp_use_tls !== "0");
-  setValue("#notificationRecipients", settings.notification_recipients || "");
+  setChecked("#teamsEnabled", settings.teams_enabled === "1");
+  setValue("#teamsGroupRecipient", settings.teams_group_recipient || "group.id.a474985@volvo.com");
+  setValue("#teamsSubjectPrefix", settings.teams_subject_prefix || "TEAMS");
+  setChecked("#notificationSimulationEnabled", settings.notification_simulation_enabled !== "0");
+  setValue("#notificationSimulationRecipient", settings.notification_simulation_recipient || "");
   setValue("#loanReminderDays", settings.loan_reminder_days || settings.due_soon_days || "10");
   setChecked("#notifyLoanReminders", settings.notify_loan_reminders !== "0");
   setChecked("#notifyNewJobAutomation", settings.notify_new_job !== "0");
+  setChecked("#notifyPickupReady", settings.notify_pickup_ready !== "0");
   setChecked("#notifyReturnedLoan", settings.notify_returned_loan !== "0");
   setChecked("#notifyLowStockAutomation", settings.notify_low_stock !== "0");
   setChecked("#notifyEmptyStock", settings.notify_empty_stock !== "0");
@@ -168,12 +214,17 @@ function renderSystemSettings() {
   setValue("#overdueRepeatDays", settings.overdue_repeat_days || "3");
   setChecked("#overdueBlockEnabled", settings.overdue_block_enabled === "1");
   setValue("#overdueBlockLimit", settings.overdue_block_limit || "3");
+  setValue("#maxLoanDays", settings.max_loan_days || "90");
+  updateCheckoutDateLimit();
   setTextValue("#smtpSummary", settings.smtp_enabled === "1" ? "Ja" : "Nej");
+  setTextValue("#teamsSummary", settings.teams_enabled === "1" ? "Ja" : "Nej");
+  setTextValue("#notificationSimulationSummary", settings.notification_simulation_enabled !== "0" ? "På" : "Av");
   setTextValue("#modbusSummary", settings.modbus_enabled === "1" ? "Ja" : "Nej");
   setTextValue(
     "#borrowBlockSummary",
     settings.overdue_block_enabled === "1" ? `Från ${settings.overdue_block_limit || "3"} sena lån` : "Av"
   );
+  messageTemplateFields.forEach(([id, key]) => setValue(`#${id}`, settings[key] || ""));
   renderNotificationRecipients();
 }
 
@@ -250,7 +301,6 @@ function renderNotificationRecipientOptions() {
   state.users.forEach((user) => {
     if (user.email) values.add(user.email);
   });
-  splitRecipients(state.systemSettings?.notification_recipients || "").forEach((recipient) => values.add(recipient));
   datalist.innerHTML = [...values].sort().map((email) => `<option value="${escapeHtml(email)}"></option>`).join("");
 }
 
@@ -261,7 +311,7 @@ function renderNotificationRecipients() {
     if (!container) return;
     const recipients = recipientsForKey(key);
     if (!recipients.length) {
-      container.innerHTML = `<span class="recipient-empty">Använder global SMTP-lista</span>`;
+      container.innerHTML = `<span class="recipient-empty">Ingen ansvarig vald</span>`;
       return;
     }
     container.innerHTML = recipients.map((recipient) => `
@@ -320,43 +370,142 @@ function syncCheckboxPair(sourceSelector, targetSelector) {
 
 
 function renderUsers() {
-  renderDepartmentNames();
+  renderGroupOptions();
   renderUsersTable();
 }
 
 function renderUsersTable() {
   const usersBody = $("#usersBody");
-	  if (usersBody) {
-	    usersBody.innerHTML = state.users.map((user) => `
-	      <tr>
-        <td>${escapeHtml(user.name)}</td>
-        <td>${escapeHtml(user.alias || "")}</td>
-        <td>${escapeHtml(user.email || "")}</td>
+		  if (usersBody) {
+		    usersBody.innerHTML = state.users.map((user) => `
+		      <tr>
+        <td>${userBorrowStatus(user)}</td>
+	        <td>${escapeHtml(user.name)}</td>
+	        <td>${escapeHtml(user.alias || "")}</td>
+	        <td>${escapeHtml(user.rfid_code || "")}</td>
+	        <td>${escapeHtml(user.email || "")}</td>
         <td>${escapeHtml(user.phone || "")}</td>
 	        <td>${escapeHtml(user.company || "")}</td>
 	        <td>${escapeHtml(user.department_name || user.department || "")}</td>
 		        <td>${escapeHtml(user.role || "operator")}</td>
-        <td>
-          <button class="table-action-button" type="button" data-edit-user="${escapeHtml(user.user_id)}">Edit</button>
-          <button class="danger-button" type="button" data-remove-user="${escapeHtml(user.user_id)}">Remove</button>
-        </td>
+	        <td>
+	          <button class="table-action-button" type="button" data-edit-user="${escapeHtml(user.user_id)}">Edit</button>
+	          <button class="table-action-button" type="button" data-user-card="${escapeHtml(user.user_id)}">Lägg till kort</button>
+          ${userBorrowOverrideButton(user)}
+	          <button class="danger-button" type="button" data-remove-user="${escapeHtml(user.user_id)}">Remove</button>
+	        </td>
 		      </tr>
 		    `).join("");
     document.querySelectorAll("[data-edit-user]").forEach((button) => {
       button.addEventListener("click", () => startEditUser(button.dataset.editUser));
     });
-    document.querySelectorAll("[data-remove-user]").forEach((button) => {
-      button.addEventListener("click", () => removeUser(button.dataset.removeUser));
+	    document.querySelectorAll("[data-remove-user]").forEach((button) => {
+	      button.addEventListener("click", () => removeUser(button.dataset.removeUser));
+	    });
+    document.querySelectorAll("[data-toggle-borrow-override]").forEach((button) => {
+      button.addEventListener("click", () => toggleBorrowOverride(button.dataset.toggleBorrowOverride, button.dataset.borrowOverride === "1"));
     });
-	  }
+    document.querySelectorAll("[data-user-card]").forEach((button) => {
+      button.addEventListener("click", () => openUserCardModal(button.dataset.userCard));
+    });
+		  }
 }
 
-function renderDepartmentNames() {
-  const departmentList = $("#departmentNameList");
-  if (!departmentList) return;
-  departmentList.innerHTML = unique(state.users.map((user) => user.department_name || user.department))
-    .map((departmentName) => `<option value="${escapeHtml(departmentName)}"></option>`)
-    .join("");
+function userBorrowStatus(user) {
+  const overdueCount = Number(user.overdue_loan_count || 0);
+  const isOverride = Number(user.borrow_override || 0) === 1;
+  const isBlocked = Number(user.borrow_blocked || 0) === 1;
+  if (isOverride) {
+    return `<span class="borrow-status-badge borrow-status-override" title="Manuell tillåtelse aktiv"><span class="borrow-status-icon">!</span><span>Tillåten</span></span>`;
+  }
+  if (isBlocked) {
+    return `<span class="borrow-status-badge borrow-status-blocked" title="Blockerad: ${overdueCount} sena lån"><span class="borrow-status-icon">!</span><span>Spärrad</span></span>`;
+  }
+  if (overdueCount > 0) {
+    return `<span class="borrow-status-badge borrow-status-warning" title="${overdueCount} sena lån"><span class="borrow-status-icon">${overdueCount}</span><span>Sena lån</span></span>`;
+  }
+  return `<span class="borrow-status-badge borrow-status-ok" title="Får låna"><span class="borrow-status-icon">OK</span></span>`;
+}
+
+function userBorrowOverrideButton(user) {
+  const isOverride = Number(user.borrow_override || 0) === 1;
+  const isBlocked = Number(user.borrow_blocked || 0) === 1;
+  if (!isOverride && !isBlocked) return "";
+  const enabled = isOverride ? "0" : "1";
+  const label = isOverride ? "Ta bort tillåtelse" : "Tillåt lån";
+  return `
+    <button class="table-action-button" type="button" data-toggle-borrow-override="${escapeHtml(user.user_id)}" data-borrow-override="${enabled}">
+      ${label}
+    </button>
+  `;
+}
+
+function renderGroupOptions() {
+  ["#newUserDepartmentName", "#quickUserDepartmentName"].forEach((selector) => {
+    const select = $(selector);
+    if (!select) return;
+    const currentValue = select.value;
+    select.innerHTML = [
+      `<option value="">${state.language === "en" ? "No group" : "Ingen grupp"}</option>`,
+      ...state.groups.map((group) => `<option value="${escapeHtml(group.name)}">${escapeHtml(group.department ? `${group.name} - ${group.department}` : group.name)}</option>`),
+    ].join("");
+    select.value = state.groups.some((group) => group.name === currentValue) ? currentValue : "";
+  });
+}
+
+function renderGroups() {
+  renderGroupOptions();
+  const body = $("#groupsBody");
+  if (!body) return;
+  body.innerHTML = state.groups.map((group) => `
+    <tr>
+      <td>${escapeHtml(group.name)}</td>
+      <td>${escapeHtml(group.department || "")}</td>
+      <td>${group.user_count || 0}</td>
+      <td class="table-actions-cell">
+        <button class="table-action-button" type="button" data-edit-group="${group.group_id}">Edit</button>
+        <button class="danger-button" type="button" data-delete-group="${group.group_id}" ${(group.user_count || 0) > 0 ? "disabled" : ""}>Ta bort</button>
+      </td>
+    </tr>
+  `).join("");
+  document.querySelectorAll("[data-edit-group]").forEach((button) => {
+    button.addEventListener("click", () => startEditGroup(Number(button.dataset.editGroup)));
+  });
+  document.querySelectorAll("[data-delete-group]").forEach((button) => {
+    button.addEventListener("click", () => deleteGroup(Number(button.dataset.deleteGroup)));
+  });
+}
+
+function startEditGroup(groupId) {
+  const group = state.groups.find((item) => item.group_id === groupId);
+  if (!group) return;
+  state.editingGroupId = groupId;
+  $("#newGroupName").value = group.name || "";
+  $("#newGroupDepartment").value = group.department || "";
+  $("#saveGroupButton").textContent = "Spara ändringar";
+  $("#cancelGroupEditButton").style.display = "block";
+  showAdminSettingsSection("groups");
+}
+
+function resetGroupForm() {
+  state.editingGroupId = null;
+  $("#groupForm")?.reset();
+  if ($("#saveGroupButton")) $("#saveGroupButton").textContent = "Skapa grupp";
+  if ($("#cancelGroupEditButton")) $("#cancelGroupEditButton").style.display = "none";
+}
+
+function selectedGroupDepartment(selector) {
+  const groupName = $(selector)?.value || "";
+  const group = state.groups.find((item) => item.name === groupName);
+  return group?.department || "";
+}
+
+function syncDepartmentFromGroup(groupSelector, departmentSelector) {
+  const department = selectedGroupDepartment(groupSelector);
+  const departmentInput = $(departmentSelector);
+  if (!departmentInput) return;
+  departmentInput.value = department;
+  departmentInput.readOnly = Boolean(department);
 }
 
 function userLabels() {
@@ -382,6 +531,7 @@ function userSearchText(user) {
     user.phone,
     user.company,
     user.alias,
+    user.rfid_code,
     user.department,
     user.department_name,
     user.role,
@@ -611,12 +761,7 @@ function isConsumableObject(item) {
 }
 
 function matchesCheckoutStockFilter(item) {
-  const filter = $("#checkoutStockFilter")?.value || "in_stock";
-  if (filter === "all") return true;
-  if (filter === "in_stock") return item.available_quantity > 0;
-  if (filter === "low_stock") return item.available_quantity > 0 && item.available_quantity <= item.min_quantity;
-  if (filter === "out_of_stock") return item.available_quantity <= 0;
-  return true;
+  return item.available_quantity > 0;
 }
 
 function renderCheckoutObjectSuggestions() {
@@ -632,7 +777,7 @@ function renderCheckoutObjectSuggestions() {
     .filter((item) => !isConsumableObject(item) && objectSearchText(item).includes(term))
     .sort((a, b) => b.available_quantity - a.available_quantity || a.name.localeCompare(b.name));
   const filteredMatches = allMatches.filter(matchesCheckoutStockFilter);
-  const matches = (filteredMatches.length ? filteredMatches : allMatches).slice(0, 8);
+  const matches = filteredMatches.slice(0, 8);
   suggestions.innerHTML = matches.map((item) => `
     <button class="suggestion-button" type="button" data-select-object="${escapeHtml(item.object_id)}">
       <strong>${escapeHtml(item.name)} (${escapeHtml(item.article_number || item.object_id)})</strong>
@@ -698,6 +843,7 @@ function renderLoans() {
       loan.quantity,
       formatTime(loan.checkout_time),
       formatTime(loan.due_time),
+      formatTime(loan.last_reminder_sent_at),
       loan.overdue ? "sen overdue" : "aktiv active",
     ].join(" ").toLowerCase();
     return (!term || searchable.includes(term)) &&
@@ -717,9 +863,18 @@ function renderLoans() {
       <td>${formatTime(loan.checkout_time)}</td>
       <td>${formatTime(loan.due_time)}</td>
       <td>${statusBadge(loan.overdue ? "Sen" : "Aktiv")}</td>
+      <td>${loan.last_reminder_sent_at ? formatTime(loan.last_reminder_sent_at) : "-"}</td>
+      <td>
+        <button class="table-action-button table-reminder-button" type="button" data-send-loan-reminder="${loan.loan_id}" ${loan.user_email ? "" : "disabled"}>
+          ${t("action.sendReminder")}
+        </button>
+      </td>
       <td><button class="link-button" type="button" data-print-loan="${loan.loan_id}">${t("action.print")}</button></td>
     </tr>
   `).join("");
+  document.querySelectorAll("[data-send-loan-reminder]").forEach((button) => {
+    button.addEventListener("click", () => sendLoanReminder(Number(button.dataset.sendLoanReminder), button));
+  });
   document.querySelectorAll("[data-print-loan]").forEach((button) => {
     button.addEventListener("click", () => printLoanReceipt(Number(button.dataset.printLoan)));
   });
@@ -733,6 +888,10 @@ function dashboardTips() {
         text: "Press Borrow, choose yourself, search for the item and send the loan request with quantity and return date.",
       },
       {
+        title: "Pick up an item",
+        text: "Press Pick up item when your request is ready. Search for your name and mark the prepared item as collected.",
+      },
+      {
         title: "Return an item",
         text: "Press Return, search for your name and return the active loan from the list.",
       },
@@ -741,8 +900,8 @@ function dashboardTips() {
         text: "Use My loans to see your active loans in one place. Search for your name to quickly find what you have borrowed and when it should be returned.",
       },
       {
-        title: "Report empty stock",
-        text: "Use Report out of stock when a consumable article needs refilling.",
+        title: "Consumable",
+        text: "Use Consumable when a consumable article needs refilling.",
       },
     ];
   }
@@ -750,6 +909,10 @@ function dashboardTips() {
     {
       title: "Låna ett objekt",
       text: "Tryck på Låna, välj dig själv, sök fram objektet och skicka låneförfrågan med antal och returdatum.",
+    },
+    {
+      title: "Hämta artikel",
+      text: "Tryck på Hämta artikel när din förfrågan är förberedd. Sök på ditt namn och markera artikeln som hämtad.",
     },
     {
       title: "Lämna tillbaka",
@@ -760,8 +923,8 @@ function dashboardTips() {
       text: "Här ser du dina aktiva lån samlade på ett ställe. Sök på ditt namn för att snabbt hitta vad du har lånat och när det ska lämnas tillbaka.",
     },
     {
-      title: "Anmäl slut på lager",
-      text: "Använd Anmäl slut på lager när en förbrukningsvara behöver fyllas på.",
+      title: "Förbrukningsvara",
+      text: "Använd Förbrukningsvara när en förbrukningsvara behöver fyllas på.",
     },
   ];
 }
@@ -835,6 +998,9 @@ function renderJobs() {
   });
   document.querySelectorAll("[data-delete-job]").forEach((button) => {
     button.addEventListener("click", () => deleteJob(Number(button.dataset.deleteJob)));
+  });
+  document.querySelectorAll("[data-pickup-email]").forEach((button) => {
+    button.addEventListener("click", () => sendPickupReadyEmail(Number(button.dataset.pickupEmail), button));
   });
   document.querySelectorAll("[data-open-job-id]").forEach((card) => {
     card.addEventListener("click", (event) => {
@@ -914,12 +1080,24 @@ function renderConsumableReports() {
 
 function renderJobCard(job) {
   const action = nextJobAction(job.status);
+  const pickupEmailSent = Boolean(job.pickup_ready_email_sent_at);
+  const pickupEmailButton = job.status === "prepared"
+    ? `<button class="job-pickup-email-button ${pickupEmailSent ? "is-muted" : ""}" type="button" data-pickup-email="${job.request_id}" ${pickupEmailSent ? "disabled" : ""} title="${pickupEmailSent ? (state.language === "en" ? "Pickup email sent" : "Hämtningsmail skickat") : (state.language === "en" ? "Send pickup email" : "Skicka hämtningsmail")}" aria-label="${pickupEmailSent ? (state.language === "en" ? "Pickup email sent" : "Hämtningsmail skickat") : (state.language === "en" ? "Send pickup email" : "Skicka hämtningsmail")}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M22 2 11 13"></path>
+          <path d="m22 2-7 20-4-9-9-4Z"></path>
+        </svg>
+      </button>`
+    : "";
   return `
     <article class="job-card" draggable="true" data-open-job-id="${job.request_id}" data-drag-job-id="${job.request_id}" data-drag-job-status="${job.status}">
-      <div class="job-card-top">
-        <strong>#${job.request_id}</strong>
-        <span>${escapeHtml(job.object_id)}</span>
-      </div>
+	      <div class="job-card-top">
+	        <strong>#${job.request_id}</strong>
+        <span class="job-card-top-right">
+          ${pickupEmailButton}
+          <span>${escapeHtml(job.object_id)}</span>
+        </span>
+	      </div>
       <h3>${escapeHtml(job.object_name)}</h3>
       <div class="job-card-summary">
         <span>${escapeHtml(job.user_name)}</span>
@@ -940,7 +1118,7 @@ function renderJobCard(job) {
           <dt>${escapeHtml(t("field.returnDate"))}</dt><dd>${escapeHtml(job.return_date)}</dd>
         </dl>
       </details>
-      <div class="job-card-actions">
+	      <div class="job-card-actions">
         ${action ? `<button class="table-action-button" type="button" data-job-id="${job.request_id}" data-job-status="${action[0]}">${t(action[1])}</button>` : ""}
         <button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>
       </div>
@@ -971,6 +1149,14 @@ function openJobDetail(requestId) {
   if (!job) return;
   state.selectedJobId = requestId;
   $("#jobDetailTitle").textContent = `#${job.request_id} ${job.object_name}`;
+  renderJobDetailView(job);
+  $("#jobDetailModal").classList.add("open");
+  $("#jobDetailModal").setAttribute("aria-hidden", "false");
+}
+
+function renderJobDetailView(job) {
+  $("#editJobButton").hidden = job.status === "returned" || job.status === "stocked";
+  $("#editJobButton").textContent = state.language === "en" ? "Edit" : "Ändra";
   $("#jobDetailContent").innerHTML = `
     <dl class="job-detail-grid">
       ${jobDetailRows(job).map(([label, value]) => `
@@ -979,14 +1165,57 @@ function openJobDetail(requestId) {
       `).join("")}
     </dl>
   `;
-  $("#jobDetailModal").classList.add("open");
-  $("#jobDetailModal").setAttribute("aria-hidden", "false");
+}
+
+function renderJobEditForm() {
+  const job = selectedJob();
+  if (!job) return;
+  const hasActiveLoan = job.status === "loaned";
+  $("#editJobButton").textContent = state.language === "en" ? "Cancel" : "Avbryt";
+  $("#jobDetailContent").innerHTML = `
+    <form class="job-edit-form" id="jobEditForm">
+      <label>
+        ${escapeHtml(t("field.engineId"))}
+        <input id="editJobEngineId" value="${escapeHtml(job.engine_id || "")}" autocomplete="off">
+      </label>
+      <label>
+        ${escapeHtml(t("table.projectNo"))}
+        <input id="editJobProjectNumber" value="${escapeHtml(job.project_number || "")}" autocomplete="off">
+      </label>
+      <label>
+        ${escapeHtml(t("field.quantity"))}
+        <input id="editJobQuantity" type="number" min="1" step="1" value="${job.quantity}" ${hasActiveLoan ? "disabled" : ""}>
+      </label>
+      <label>
+        ${escapeHtml(t("field.lendingDate"))}
+        <input id="editJobLendingDate" type="date" value="${escapeHtml(String(job.lending_date || "").slice(0, 10))}" ${hasActiveLoan ? "disabled" : ""}>
+      </label>
+      <label>
+        ${escapeHtml(t("field.returnDate"))}
+        <input id="editJobReturnDate" type="date" value="${escapeHtml(String(job.return_date || "").slice(0, 10))}">
+      </label>
+      <div class="form-actions">
+        <button class="primary-button" type="submit">${state.language === "en" ? "Save changes" : "Spara ändringar"}</button>
+      </div>
+    </form>
+  `;
+  $("#jobEditForm").addEventListener("submit", saveJobDetails);
 }
 
 function closeJobDetail() {
   $("#jobDetailModal").classList.remove("open");
   $("#jobDetailModal").setAttribute("aria-hidden", "true");
   state.selectedJobId = null;
+}
+
+function toggleJobEdit() {
+  const job = selectedJob();
+  if (!job) return;
+  if ($("#jobEditForm")) {
+    renderJobDetailView(job);
+  } else {
+    renderJobEditForm();
+  }
 }
 
 function selectedJob() {
@@ -1034,6 +1263,48 @@ function exportSelectedJobCsv() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function exportObjectsCsv() {
+  const rows = [
+    ["Objekt-ID", "Namn", "Kategori", "Typ", "Beteckning", "VOLVO-ID", "Leverantörsartikel", "Totalt antal", "Tillgängligt antal", "Min-nivå", "Plats", "Lagerplats 2", "Förråd", "Dörr/fack", "Tillhör instrument", "Device", "Tillhör", "Sökord", "Hissbricka", "Status"],
+    ...state.objects.map((item) => [
+      item.object_id,
+      item.name,
+      item.category,
+      item.item_type || "",
+      item.description || "",
+      item.article_number || "",
+      item.supplier_article_number || "",
+      item.total_quantity,
+      item.available_quantity,
+      item.min_quantity,
+      item.location,
+      item.storage_location_2 || "",
+      item.tornado_id,
+      item.door_id || "",
+      item.belongs_to_instrument || "",
+      item.device || "",
+      item.belongs_to || "",
+      item.search_words || "",
+      item.lift_tray || "",
+      item.status,
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
+  const blob = new Blob([`\ufeff${csv}`], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "objektlista.xls";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportVisibleObjectsCsv() {
+  exportObjectsCsv();
 }
 
 function csvCell(value) {
@@ -1163,8 +1434,9 @@ function resetObjectForm() {
 }
 
 function objectThumbnail(item) {
-  if (item.image_data) {
-    return `<img class="object-thumb" src="${escapeHtml(item.image_data)}" alt="">`;
+  const imageData = objectDisplayImage(item);
+  if (imageData) {
+    return `<img class="object-thumb" src="${escapeHtml(imageData)}" alt="">`;
   }
   const label = String(item.category || "Objekt").slice(0, 3).toUpperCase();
   return `<span class="object-thumb-placeholder">${escapeHtml(label)}</span>`;
@@ -1176,19 +1448,44 @@ function readSelectedObjectImage() {
   if (!file.type.startsWith("image/")) {
     return Promise.reject(new Error("Välj en bildfil."));
   }
-  if (file.size > 700_000) {
-    return Promise.reject(new Error("Bilden är för stor. Välj en bild under 700 KB."));
-  }
+  return resizeObjectImage(file);
+}
 
+function resizeObjectImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const maxSide = 900;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+
+        let quality = 0.82;
+        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+        while (dataUrl.length > 700_000 && quality > 0.45) {
+          quality -= 0.08;
+          dataUrl = canvas.toDataURL("image/jpeg", quality);
+        }
+        resolve(dataUrl);
+      };
+      image.onerror = () => reject(new Error("Kunde inte läsa bilden."));
+      image.src = String(reader.result || "");
+    };
     reader.onerror = () => reject(new Error("Kunde inte läsa bilden."));
     reader.readAsDataURL(file);
   });
 }
 
-function updateImagePreview() {
+async function updateImagePreview() {
   const file = $("#newObjectImage").files[0];
   const preview = $("#newObjectImagePreview");
   if (!file) {
@@ -1200,8 +1497,13 @@ function updateImagePreview() {
     return;
   }
 
-  const url = URL.createObjectURL(file);
-  preview.innerHTML = `<img src="${url}" alt="">`;
+  preview.innerHTML = "<span>Anpassar bilden...</span>";
+  try {
+    const dataUrl = await resizeObjectImage(file);
+    preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+  } catch (error) {
+    preview.innerHTML = `<span>${escapeHtml(error.message)}</span>`;
+  }
 }
 
 function clearImagePreview() {
@@ -1256,11 +1558,12 @@ function bindEvents() {
     updateCheckoutInfo();
     renderCheckoutObjectSuggestions();
   });
-	  $("#checkoutStockFilter").addEventListener("change", renderCheckoutObjectSuggestions);
+	  $("#exportObjectsExcelButton")?.addEventListener("click", exportVisibleObjectsCsv);
 	  $("#checkoutUserSearch").addEventListener("input", renderCheckoutUserSuggestions);
   $("#openUserScanButton")?.addEventListener("click", openUserScanModal);
   $("#closeUserScanButton")?.addEventListener("click", closeUserScanModal);
   $("#userScanBackdrop")?.addEventListener("click", closeUserScanModal);
+  $("#readUserCardButton")?.addEventListener("click", scanCheckoutUserCard);
   $("#openObjectScanButton")?.addEventListener("click", openObjectScanModal);
   $("#closeObjectScanButton")?.addEventListener("click", closeObjectScanModal);
   $("#objectScanBackdrop")?.addEventListener("click", closeObjectScanModal);
@@ -1268,6 +1571,9 @@ function bindEvents() {
   $("#dashboardTipPrev")?.addEventListener("click", () => stepDashboardTip(-1));
   $("#dashboardTipNext")?.addEventListener("click", () => stepDashboardTip(1));
 	  $("#consumableObjectSearch")?.addEventListener("input", renderConsumableObjectSuggestions);
+  $("#checkoutLendingDate")?.addEventListener("change", updateCheckoutDateLimit);
+  $("#newUserPhone")?.addEventListener("input", () => sanitizePhoneField("#newUserPhone"));
+  $("#quickUserPhone")?.addEventListener("input", () => sanitizePhoneField("#quickUserPhone"));
 	  $("#returnUserSearch")?.addEventListener("input", renderReturnUserSuggestions);
 	  $("#pickupUserSearch")?.addEventListener("input", renderPickupUserSuggestions);
 	  $("#myLoansUserSearch")?.addEventListener("input", renderMyLoansUserSuggestions);
@@ -1276,10 +1582,14 @@ function bindEvents() {
 	  $("#consumableReportForm")?.addEventListener("submit", saveConsumableReport);
 	  $("#addObjectForm").addEventListener("submit", saveObject);
   $("#addUserForm").addEventListener("submit", saveUser);
-  $("#cancelUserEditButton").addEventListener("click", resetUserForm);
+  $("#groupForm")?.addEventListener("submit", saveGroup);
+  $("#cancelGroupEditButton")?.addEventListener("click", resetGroupForm);
+	  $("#cancelUserEditButton").addEventListener("click", resetUserForm);
   $("#systemSettingsForm")?.addEventListener("submit", saveSystemSettings);
   $("#saveAutomationSettingsButton")?.addEventListener("click", saveSystemSettings);
+  $("#saveMessageTemplatesButton")?.addEventListener("click", saveSystemSettings);
   $("#sendRemindersButton")?.addEventListener("click", sendLoanReminders);
+  $("#sendTeamsTestButton")?.addEventListener("click", sendTeamsTestMessage);
   document.querySelectorAll("[data-add-recipient]").forEach((button) => {
     button.addEventListener("click", () => addNotificationRecipient(button.dataset.addRecipient));
   });
@@ -1305,15 +1615,21 @@ function bindEvents() {
   $("#openQuickUserButton").addEventListener("click", openQuickUserModal);
   $("#closeQuickUserButton").addEventListener("click", closeQuickUserModal);
   $("#quickUserBackdrop").addEventListener("click", closeQuickUserModal);
-  $("#closeJobDetailButton").addEventListener("click", closeJobDetail);
-  $("#jobDetailBackdrop").addEventListener("click", closeJobDetail);
-  $("#printJobButton").addEventListener("click", printSelectedJob);
+  $("#userCardForm")?.addEventListener("submit", saveUserCard);
+  $("#scanUserCardCodeButton")?.addEventListener("click", scanUserCardCode);
+  $("#generateUserCardCodeButton")?.addEventListener("click", generateUserCardCode);
+  $("#closeUserCardButton")?.addEventListener("click", closeUserCardModal);
+  $("#userCardBackdrop")?.addEventListener("click", closeUserCardModal);
+	  $("#closeJobDetailButton").addEventListener("click", closeJobDetail);
+	  $("#jobDetailBackdrop").addEventListener("click", closeJobDetail);
+  $("#editJobButton").addEventListener("click", toggleJobEdit);
+	  $("#printJobButton").addEventListener("click", printSelectedJob);
   $("#exportJobExcelButton").addEventListener("click", exportSelectedJobCsv);
   $("#quickUserDepartmentName").addEventListener("change", () => {
-    fillDepartmentFromDepartmentName("#quickUserDepartmentName", "#quickUserDepartment");
+    syncDepartmentFromGroup("#quickUserDepartmentName", "#quickUserDepartment");
   });
   $("#newUserDepartmentName").addEventListener("change", () => {
-    fillDepartmentFromDepartmentName("#newUserDepartmentName", "#newUserDepartment");
+    syncDepartmentFromGroup("#newUserDepartmentName", "#newUserDepartment");
   });
   $("#cancelObjectEditButton").addEventListener("click", resetObjectForm);
 

@@ -1,7 +1,7 @@
 # Uppdates
 
-Nuvarande version: V1.1.7
-Senast uppdaterad: 2026-05-27
+Nuvarande version: V1.2.7
+Senast uppdaterad: 2026-06-03
 
 Den har filen anvands som projektlogg. Vid varje update:
 
@@ -14,6 +14,369 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.2.7 - 2026-06-03
+
+Fixat:
+
+- Smartcard-lasningen vantar nu kort pa ett kort med CardRequest innan UID-lasning.
+- Tog bort stale smartcard-bytecode som gjorde att servern fortsatte anvanda gammal laslogik.
+
+Verifierat:
+
+- Backend kompilerar.
+- Smartcard-API:t svarar med den nya timeout-baserade lasningen.
+
+## V1.2.6 - 2026-06-03
+
+Fixat:
+
+- Smartcard-lasningen stanger nu kortlasaranslutningen efter varje UID-lasning sa lasaren kan anvandas igen.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens andrade JavaScript-fil klarar syntaxkontroll.
+
+## V1.2.5 - 2026-06-03
+
+Fixat:
+
+- Auto-scanning av anvandarkort kan nu valja samma kort igen direkt efter att ett lan skapats.
+
+Verifierat:
+
+- Frontendens andrade JavaScript-fil klarar syntaxkontroll.
+
+## V1.2.4 - 2026-06-03
+
+Andrat:
+
+- Lana-vyn letar nu automatiskt efter smartcard och valjer kopplad anvandare utan knapptryck.
+- Auto-scanningen ar bara aktiv i Lana-vyn och har cooldown for samma kort.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens andrade JavaScript-filer klarar syntaxkontroll.
+
+## V1.2.3 - 2026-06-03
+
+Andrat:
+
+- Kopplade smartcard-lasning till backend-API for UID-lasning.
+- Lagg till kort kan nu scanna ett fysiskt kort och fylla kortkoden.
+- Scanna anvandare laser kort och valjer kopplad aktiv anvandare i laneflodet.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens andrade JavaScript-filer klarar syntaxkontroll.
+
+## V1.2.2 - 2026-06-03
+
+Andrat:
+
+- Objektbilder visas nu som delad fallback for andra objekt med samma benamning.
+- Admintexten for objektbild forklarar att bilden kan ateranvandas for samma benamning.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens andrade JavaScript-filer klarar syntaxkontroll.
+
+## V1.2.1 - 2026-06-02
+
+Andrat:
+
+- Tog bort den oanvanda VS Code-restfilen `tempCodeRunnerFile.py`.
+- Lade till korta README-filer for `docs`, `scripts` och `frontend/sample-images`.
+- Lade till lokala Codex- och Code Runner-filer i `.gitignore`.
+
+Verifierat:
+
+- Ingen appkod eller live-databas andrades i den har stadningen.
+
+## V1.2.0 - 2026-06-01
+
+Andrat:
+
+- Flyttade Hantera meddelanden sa meddelandemallarna ocksa visas langst ner i Admin -> Installningar.
+- Alias pa anvandare far nu vara fri text utan A+6-siffror-kontroll eller unikhetskrav.
+- Snabbformular och anvandarformular visar inte langre RFID-falt; kort kopplas via Lagg till kort.
+- Objektbilder skalas och komprimeras automatiskt i webblasaren innan de sparas.
+- Admin -> Hantera anvandare har nu Lagg till kort for RFID/kortkod med testkod tills riktig scanner kopplas in.
+- Objektlistan exporteras som en Excel-kompatibel objektlista med fler kolumner.
+- Admin-installningarnas kontrollrader har symmetrisk hogerspalt for toggle, falt och enhetslabel.
+- Gruppformularets knappar ar mindre och ligger samlat till hoger.
+
+Fixat:
+
+- Rensade 21 aktiva lan som var kopplade till borttagna jobb och lade tillbaka 26 artiklar i saldo.
+- Datavarningen for orphan active loans ar nu 0 i nuvarande databas.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Smoke-test via /api/statistics visar 7 aktiva lan, 9 oppna jobb och 0 orphan_active_loans.
+
+## V1.1.24 - 2026-05-29
+
+Andrat:
+
+- Admin -> Hantera anvandare visar nu lanestatus per anvandare.
+- Sparrade anvandare markeras med en tydlig statusbadge och antal sena lan ligger kvar i tooltipen.
+- Ellab kan manuellt tillata lan for en blockerad anvandare och sedan ta bort tillatelsen igen.
+- Lanesparren i backend respekterar den manuella tillatelsen.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Backendkontroll visar att Samuel Karlsson ar sparrad med 2 sena lan nar gransvardet ar 1.
+
+## V1.1.23 - 2026-05-29
+
+Andrat:
+
+- Lade till Andra-knapp i jobbdetalj-modalen.
+- Jobb kan nu redigeras for Engine ID, Project no, antal, lending date och return date.
+- For redan utlanade jobb ar antal och lending date lasta, men return date och projektdetaljer kan andras.
+- Andrad return date pa ett utlanat jobb synkas till det aktiva lanets returdatum.
+
+Fixat:
+
+- Rattade en felplacerad sparr sa jobb med aktivt lan ater kan flyttas vidare till aterlamnat.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Testade jobbuppdatering via backend pa jobb #90.
+
+## V1.1.22 - 2026-05-29
+
+Fixat:
+
+- Flyttade hämtningsmail till en pappersflygplansikon i toppen av jobbkortet.
+- Ikonen är aktiv/blå när mail kan skickas och grå/disabled när hämtningsmail redan är skickat.
+- Statistik visar nu en datavarning när aktiva lån är kopplade till borttagna jobb.
+- Lade till orphan_active_loans i statistikens backend-data för att förklara varför aktiva lån kan synas utan jobb.
+
+Verifierat:
+
+- Backend kompilerar.
+- Ändrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Bekräftat att nuvarande databas har 21 aktiva lån, 15 sena lån och 21 aktiva lån kopplade till borttagna jobb.
+
+## V1.1.21 - 2026-05-29
+
+Andrat:
+
+- Grupper har nu en kopplad avdelning.
+- Admin kan redigera gruppens namn och avdelning.
+- Nar en grupp andras uppdateras kopplade anvandare med nytt gruppnamn och avdelning.
+- Nar grupp valjs pa anvandare fylls avdelning i automatiskt och blir last till gruppens avdelning.
+- Nya grupper kraver avdelning.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Databasmigration kopplar befintliga grupper till befintliga avdelningar.
+
+## V1.1.20 - 2026-05-29
+
+Fixat:
+
+- Rattade missforstandet: rollen SuperAdmin visas nu som System admin, men vyn heter fortfarande Logg.
+- Logg syns fortsatt bara for System admin.
+- Lade till central hantering av grupper i Admin.
+- Befintliga gruppnamn fran anvandare migreras in i grupplistan.
+- Anvandare och snabbskapad anvandare valjer grupp fran dropdown istallet for fritext.
+- Backend stoppar gruppnamn som inte finns, sa nya slumpmassiga grupptexter inte kan sparas.
+- Grupper kan tas bort om de inte anvands av aktiva anvandare.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Databasmigration for grupper kor och hittar befintliga grupper.
+
+## V1.1.19 - 2026-05-29
+
+Andrat:
+
+- Objekt ar nu synligt for operatorer, medan redigering fortsatt ar adminstyrd.
+- Logg ar nu superadmin-only och heter System admin.
+- Sidebar har tydligare mellanrum mellan operator-, admin- och systemadmin-delar.
+- Jobb visar en badge med antal oppna jobb.
+- JOBB-statusen Forbered heter nu Redo att hamta.
+- Klar-att-hamta-mail skickas manuellt fran jobbkortet och knappen blir gra efter utskick.
+- Jobb med aktivt lan kan inte langre tas bort utan att lanet forst lamnas tillbaka.
+- Objekt kan exporteras till CSV/Excel fran Hantera objekt.
+- VOLVO-ID ersatter Volvoid i objekttexter.
+- Max lanetid ar nu ett skrivbart nummerfalt.
+- Statistikdiagram renderas med hogre pixelratio for skarpare text.
+- Lagerfilter pa Lana togs bort; bara objekt med saldo visas i soket.
+- Sparrmeddelandet for sena lan ar omskrivet till ett tydligare ERROR-meddelande.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+
+## V1.1.18 - 2026-05-29
+
+Andrat:
+
+- Dashboardens snabbknappar visas med stora bokstaver.
+- Bytte Anmal slut pa lager till Forbrukningsvara och tog bort oppna rapporter fran den vyn.
+- Lade till laddningstext pa Skicka laneforfragan medan requesten skickas.
+- Anvandarformularet kraver fornamn, efternamn, e-post, telefonnummer och foretag.
+- Telefonfalt tar bort bokstaver och backend stoppar ogiltiga telefonnummer och e-postadresser.
+- Lade till max lanetid i Admin-installningar, standard 90 dagar.
+- Nar ett jobb flyttas till Ready for pickup skickas ett SMTP-mail till lantagaren.
+- Lade till redigerbar meddelandemall for mailet som sager att artikeln ar klar att hamta.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+
+## V1.1.17 - 2026-05-29
+
+Fixat:
+
+- Ateraktiverar knappar efter laneforfragan, Teams-test och manuella paminnelser.
+- Masspaminnelser respekterar nu senaste skickade paminnelse och hoppar over nyligen paminda lan.
+- Teams-SMTP laser serverns svar och felar om relayn nekar kommandot.
+- Utlaning via jobb kontrollerar aktuellt saldo vid uppdatering for att undvika dubbla snabba utlansbeslut.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens action-fil klarar JavaScript-syntaxkontroll.
+
+## V1.1.16 - 2026-05-29
+
+Fixat:
+
+- Lade till klicksparr pa Skicka laneforfragan sa knappen inte kan spammas medan requesten skickas.
+- Lade till backendskydd mot dubbla oppna laneforfragningar for samma anvandare, objekt och datum.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens action-fil klarar JavaScript-syntaxkontroll.
+
+## V1.1.15 - 2026-05-29
+
+Andrat:
+
+- Justerade Teams-SMTP till samma laga niva som den tidigare fungerande funktionen.
+- Teams anvander nu EHLO mailgot.ut.volvo.com, radvis socket-skrivning och 0,5 sekunders paus mellan SMTP-kommandon.
+- Loggar varje SMTP-kommando med >> vid Teams-utskick for felsokning.
+
+Verifierat:
+
+- Backend kompilerar.
+- Frontendens action-fil klarar JavaScript-syntaxkontroll.
+
+## V1.1.14 - 2026-05-29
+
+Fixat:
+
+- Andrade Teams-simulering sa den inte langre stoppar utskicket, utan skickar via Teams-gruppadressen till testmottagaren nar Teams ar aktivt.
+
+Verifierat:
+
+- Backend kompilerar.
+- Bekraftat att Teams fortfarande kraver aktiv Teams-installning innan utskick.
+
+## V1.1.13 - 2026-05-29
+
+Andrat:
+
+- Bytte Teams-kanalen fran webhook till SMTP-relay enligt Volvo-flodet.
+- Lade till tydliga backendfunktioner email_msg och team_msg.
+- Teams skickas till konfigurerad gruppadress med amnet TEAMS personens.mail@domän.
+- Simuleringslage styr Teams-mottagaren till testmottagaren.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Teams-flodet testat i simuleringslage.
+
+## V1.1.12 - 2026-05-29
+
+Andrat:
+
+- Lade till Teams-installningar under System med aktiv-toggle och webhook URL.
+- Teams-notiser kan nu skickas via webhook nar simuleringslage ar av.
+- Lade till Skicka Teams-test for att verifiera Teams-kanalen.
+- Simuleringslage skyddar fortfarande Teams genom att bara skriva meddelandet i serverloggen.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Teams-test verifierat i simuleringslage utan att posta till webhook.
+
+## V1.1.11 - 2026-05-29
+
+Andrat:
+
+- Lade till Admin-fliken Hantera meddelanden for att redigera SMTP- och Teams-mallar utan kodandring.
+- Kopplade nytt jobb, aterlamnat lan, lagerlarm och lanepaminnelser till redigerbara mallar.
+- Lade till stod for variabler i mallar, till exempel {user_name}, {object_name} och {due_time}.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+- Mallrendering testad med standardvariabler.
+
+## V1.1.10 - 2026-05-29
+
+Andrat:
+
+- Lade till simuleringslage for notiser sa alla mail styrs till en testmottagare under utveckling.
+- Lade till Teams-stub som skriver mottagare och meddelande till serverloggen.
+- Interna systemnotiser gar via Teams-stubben, medan lanepaminnelser fortsatt gar via mail.
+- Tog bort global mottagarruta fran SMTP-vyn eftersom mottagare styrs av lanets anvandare eller ansvariga per notistyp.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+
+## V1.1.9 - 2026-05-28
+
+Andrat:
+
+- Lade till manuell knapp for att skicka paminnelse pa varje aktivt lan.
+- Lade till kolumnen Senast pamind i Aktiva lan.
+- Sparar senaste skickade paminnelse pa lanet, aven nar samlade paminnelser skickas.
+
+Verifierat:
+
+- Backend kompilerar.
+- Andrade frontendfiler klarar JavaScript-syntaxkontroll.
+
+## V1.1.8 - 2026-05-28
+
+Andrat:
+
+- Lade till Tips & tricks for Hamta artikel sa dashboardens alla fem snabbknappar har varsitt tips.
+- Snyggade till SV/EN-valet till en tydligare sprakvaxlare.
+- Oversatte alla fem dashboardens snabbknappar vid sprakbyte.
+
+Verifierat:
+
+- Frontendandringarna ar statiska och klara for smoketest i webblasaren.
 
 ## V1.1.7 - 2026-05-27
 

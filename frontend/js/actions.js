@@ -5,7 +5,10 @@
 // ============================================================
 
 async function checkout() {
+  const button = $("#checkoutButton");
+  if (button?.disabled) return;
   try {
+    if (button) button.disabled = true;
     const userId = resolveCheckoutUserId();
     if (!userId) {
       showToast(t("toast.chooseUser"));
@@ -20,6 +23,8 @@ async function checkout() {
     await refreshAll();
   } catch (error) {
     showToast(error.message);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -41,6 +46,7 @@ function clearCheckoutForm() {
   $("#checkoutUser").value = "";
   $("#checkoutUserSearch").value = "";
   renderCheckoutUserDetails();
+  resetAutoUserCardScanMemory();
   $("#checkoutEngineId").value = "";
   $("#checkoutProjectNumber").value = "";
   $("#checkoutQuantity").value = "1";
@@ -48,7 +54,12 @@ function clearCheckoutForm() {
 }
 
 async function requestLoan() {
+  const button = $("#requestLoanButton");
+  if (button?.disabled) return;
+  const originalText = button?.textContent || "";
   try {
+    if (button) button.disabled = true;
+    if (button) button.textContent = state.language === "en" ? "Sending..." : "Skickar...";
     const userId = resolveCheckoutUserId();
     if (!userId) {
       showToast(t("toast.chooseUser"));
@@ -63,6 +74,9 @@ async function requestLoan() {
     await refreshAll();
   } catch (error) {
     showToast(error.message);
+  } finally {
+    if (button) button.textContent = originalText || t("action.requestLoan");
+    if (button) button.disabled = false;
   }
 }
 
@@ -76,7 +90,7 @@ async function saveConsumableReport(event) {
         object_id: objectId,
       }),
     });
-    showToast(state.language === "en" ? "Article reported out of stock." : "Artikeln anmäldes som slut på lager.");
+    showToast(state.language === "en" ? "Consumable reported out of stock." : "Förbrukningsvaran anmäldes som slut.");
     $("#consumableReportForm").reset();
     $("#consumableObjectId").value = "";
     await refreshAll();
@@ -141,6 +155,47 @@ async function deleteJob(requestId) {
   }
 }
 
+async function saveJobDetails(event) {
+  event.preventDefault();
+  const job = selectedJob();
+  if (!job) return;
+  try {
+    await api("/api/loan-requests/details", {
+      method: "PUT",
+      body: JSON.stringify({
+        request_id: job.request_id,
+        engine_id: $("#editJobEngineId").value,
+        project_number: $("#editJobProjectNumber").value,
+        quantity: Number($("#editJobQuantity").value || job.quantity),
+        lending_date: $("#editJobLendingDate").value || job.lending_date,
+        return_date: $("#editJobReturnDate").value,
+      }),
+    });
+    showToast(`Jobb ${job.request_id} uppdaterades.`);
+    await refreshAll();
+    openJobDetail(job.request_id);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function sendPickupReadyEmail(requestId, button = null) {
+  if (button?.disabled) return;
+  try {
+    if (button) button.disabled = true;
+    const data = await api("/api/loan-requests/pickup-email", {
+      method: "POST",
+      body: JSON.stringify({ request_id: requestId }),
+    });
+    showToast(state.language === "en" ? `Pickup email sent: ${data.sent}.` : `Hämtningsmail skickat: ${data.sent}.`);
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function returnItem(loanId) {
   try {
     if (!loanId) {
@@ -161,6 +216,7 @@ async function returnItem(loanId) {
 async function saveUser(event) {
   event.preventDefault();
   try {
+    sanitizePhoneField("#newUserPhone");
     const payload = {
       first_name: $("#newUserFirstName").value,
       last_name: $("#newUserLastName").value,
@@ -195,10 +251,11 @@ function startEditUser(userId) {
   $("#newUserLastName").value = user.last_name || user.name?.split(" ").slice(1).join(" ") || "";
   $("#newUserEmail").value = user.email || "";
   $("#newUserPhone").value = user.phone || "";
-  $("#newUserCompany").value = user.company || "";
-  $("#newUserAlias").value = user.alias || "";
-  $("#newUserDepartment").value = user.department || "";
-  $("#newUserDepartmentName").value = user.department_name || "";
+	  $("#newUserCompany").value = user.company || "";
+	  $("#newUserAlias").value = user.alias || "";
+	  $("#newUserDepartment").value = user.department || "";
+	  $("#newUserDepartmentName").value = user.department_name || "";
+  syncDepartmentFromGroup("#newUserDepartmentName", "#newUserDepartment");
   $("#newUserRole").value = user.role || "operator";
   $("#newUserActive").checked = user.active !== 0;
   $("#saveUserButton").textContent = "Spara ändringar";
@@ -210,6 +267,7 @@ function startEditUser(userId) {
 function resetUserForm() {
   state.editingUserId = null;
   $("#addUserForm").reset();
+  $("#newUserDepartment").readOnly = false;
   $("#newUserActive").checked = true;
   $("#saveUserButton").textContent = "Skapa användare";
   $("#cancelUserEditButton").style.display = "none";
@@ -224,6 +282,62 @@ async function removeUser(userId) {
     showToast(`Användare ${userId} togs bort.`);
     if (state.editingUserId === userId) resetUserForm();
     await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function toggleBorrowOverride(userId, enabled) {
+  const user = state.users.find((item) => item.user_id === userId);
+  const name = user?.name || userId;
+  const prompt = enabled
+    ? `Tillåt ${name} att låna trots sena lån?`
+    : `Ta bort manuell lånetillåtelse för ${name}?`;
+  if (!confirm(prompt)) return;
+  try {
+    await api("/api/users/borrow-override", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, enabled }),
+    });
+    showToast(enabled ? `${name} får låna manuellt.` : `Manuell lånetillåtelse borttagen för ${name}.`);
+    await refreshAll();
+    showAdminSettingsSection("users");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function saveGroup(event) {
+  event.preventDefault();
+  try {
+    const payload = {
+      name: $("#newGroupName").value,
+      department: $("#newGroupDepartment").value,
+    };
+    if (state.editingGroupId) payload.group_id = state.editingGroupId;
+    const data = await api("/api/groups", {
+      method: state.editingGroupId ? "PUT" : "POST",
+      body: JSON.stringify(payload),
+    });
+    showToast(state.editingGroupId ? `Grupp ${data.name} uppdaterades.` : `Grupp ${data.name} skapades.`);
+    resetGroupForm();
+    await refreshAll();
+    showAdminSettingsSection("groups");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function deleteGroup(groupId) {
+  const group = state.groups.find((item) => item.group_id === groupId);
+  const name = group?.name || groupId;
+  if (!confirm(`Ta bort gruppen ${name}?`)) return;
+  try {
+    await api(`/api/groups?group_id=${encodeURIComponent(groupId)}`, { method: "DELETE" });
+    showToast(`Grupp ${name} togs bort.`);
+    if (state.editingGroupId === groupId) resetGroupForm();
+    await refreshAll();
+    showAdminSettingsSection("groups");
   } catch (error) {
     showToast(error.message);
   }
@@ -247,17 +361,25 @@ async function saveSystemSettings(event) {
         smtp_password: $("#smtpPassword").value,
         smtp_from_address: $("#smtpFromAddress").value,
         smtp_use_tls: $("#smtpUseTls").checked,
-        notification_recipients: $("#notificationRecipients").value,
+        teams_enabled: isChecked("#teamsEnabled"),
+        teams_group_recipient: fieldValue("#teamsGroupRecipient"),
+        teams_subject_prefix: fieldValue("#teamsSubjectPrefix", "TEAMS"),
+        teams_ehlo_name: state.systemSettings.teams_ehlo_name || "mailgot.ut.volvo.com",
+        notification_simulation_enabled: isChecked("#notificationSimulationEnabled"),
+        notification_simulation_recipient: fieldValue("#notificationSimulationRecipient"),
+        notification_recipients: state.systemSettings.notification_recipients || "",
         notification_recipients_new_job: state.systemSettings.notification_recipients_new_job || "",
         notification_recipients_returned_loan: state.systemSettings.notification_recipients_returned_loan || "",
         notification_recipients_low_stock: state.systemSettings.notification_recipients_low_stock || "",
         notification_recipients_empty_stock: state.systemSettings.notification_recipients_empty_stock || "",
         loan_reminder_days: fieldValue("#dueSoonDays", fieldValue("#loanReminderDays", "10")),
         due_soon_days: fieldValue("#dueSoonDays", fieldValue("#loanReminderDays", "10")),
+        max_loan_days: fieldValue("#maxLoanDays", "90"),
         overdue_repeat_days: fieldValue("#overdueRepeatDays", "3"),
         overdue_block_enabled: isChecked("#overdueBlockEnabled"),
         overdue_block_limit: fieldValue("#overdueBlockLimit", "3"),
         notify_new_job: isChecked("#notifyNewJobAutomation"),
+        notify_pickup_ready: isChecked("#notifyPickupReady"),
         notify_returned_loan: isChecked("#notifyReturnedLoan"),
         notify_low_stock: isChecked("#notifyLowStockAutomation"),
         notify_empty_stock: isChecked("#notifyEmptyStock"),
@@ -265,6 +387,7 @@ async function saveSystemSettings(event) {
         notify_due_soon: isChecked("#notifyDueSoon"),
         notify_overdue: isChecked("#notifyOverdue"),
         notify_overdue_repeat: isChecked("#notifyOverdueRepeat"),
+        ...messageTemplatePayload(),
       }),
     });
     renderSystemSettings();
@@ -283,28 +406,73 @@ function fieldValue(selector, fallback = "") {
   return $(selector)?.value ?? fallback;
 }
 
+function messageTemplatePayload() {
+  const payload = {};
+  messageTemplateFields.forEach(([id, key]) => {
+    payload[key] = fieldValue(`#${id}`);
+  });
+  return payload;
+}
+
 async function sendLoanReminders() {
+  const button = $("#sendRemindersButton");
+  if (button?.disabled) return;
   try {
+    if (button) button.disabled = true;
     const data = await api("/api/reminders/send", { method: "POST", body: JSON.stringify({}) });
-    showToast(`Påminnelser skickade: ${data.sent} av ${data.matched}.`);
+    const skipped = Number(data.skipped_recent || 0);
+    const extra = skipped ? ` ${skipped} hoppades över eftersom de nyligen påmints.` : "";
+    showToast(`Påminnelser skickade: ${data.sent} av ${data.matched}.${extra}`);
     await refreshAll();
   } catch (error) {
     showToast(error.message);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
-function fillDepartmentFromDepartmentName(departmentNameSelector, departmentSelector) {
-  const departmentName = $(departmentNameSelector).value.trim().toLowerCase();
-  if (!departmentName) return;
-  const match = state.users.find((user) => (user.department_name || "").toLowerCase() === departmentName);
-  if (match?.department && !$(departmentSelector).value.trim()) {
-    $(departmentSelector).value = match.department;
+function sanitizePhoneField(selector) {
+  const input = $(selector);
+  if (!input) return;
+  input.value = input.value.replace(/[^0-9+ ()-]/g, "");
+}
+
+async function sendTeamsTestMessage() {
+  const button = $("#sendTeamsTestButton");
+  if (button?.disabled) return;
+  try {
+    if (button) button.disabled = true;
+    await saveSystemSettings();
+    const data = await api("/api/teams/test", { method: "POST", body: JSON.stringify({}) });
+    showToast(data.simulation ? "Teams-test simulerat i serverloggen." : "Teams-test skickat.");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function sendLoanReminder(loanId, button = null) {
+  if (button?.disabled) return;
+  try {
+    if (button) button.disabled = true;
+    const data = await api("/api/loans/reminder", {
+      method: "POST",
+      body: JSON.stringify({ loan_id: loanId }),
+    });
+    showToast(state.language === "en" ? `Reminder sent: ${data.sent}.` : `Påminnelse skickad: ${data.sent}.`);
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
 async function saveQuickUser(event) {
   event.preventDefault();
   try {
+    sanitizePhoneField("#quickUserPhone");
     const data = await api("/api/users", {
       method: "POST",
       body: JSON.stringify({
@@ -345,6 +513,7 @@ function openUserScanModal() {
   $("#userScanModal").classList.add("open");
   $("#userScanModal").setAttribute("aria-hidden", "false");
   $("#closeUserScanButton").focus();
+  scanCheckoutUserCard();
 }
 
 function closeUserScanModal() {
@@ -363,6 +532,175 @@ function closeObjectScanModal() {
   $("#objectScanModal").classList.remove("open");
   $("#objectScanModal").setAttribute("aria-hidden", "true");
   $("#openObjectScanButton").focus();
+}
+
+async function readSmartcardUid() {
+  const data = await api("/api/smartcard/read", { method: "POST", body: "{}" });
+  return data.uid || "";
+}
+
+function updateAutoUserCardScan() {
+  const checkoutIsActive = $("#checkoutView")?.classList.contains("active");
+  if (checkoutIsActive) {
+    startAutoUserCardScan();
+  } else {
+    stopAutoUserCardScan();
+  }
+}
+
+function startAutoUserCardScan() {
+  if (state.autoUserCardScanTimer) return;
+  autoScanCheckoutUserCard();
+  state.autoUserCardScanTimer = setInterval(autoScanCheckoutUserCard, 1600);
+}
+
+function stopAutoUserCardScan() {
+  if (!state.autoUserCardScanTimer) return;
+  clearInterval(state.autoUserCardScanTimer);
+  state.autoUserCardScanTimer = null;
+  state.autoUserCardScanBusy = false;
+}
+
+function resetAutoUserCardScanMemory() {
+  state.lastAutoUserCardUid = "";
+  state.lastAutoUserCardAt = 0;
+  state.lastUnknownAutoUserCardUid = "";
+}
+
+async function autoScanCheckoutUserCard() {
+  if (state.autoUserCardScanBusy || !$("#checkoutView")?.classList.contains("active")) return;
+  state.autoUserCardScanBusy = true;
+  try {
+    const data = await api("/api/users/scan-card", { method: "POST", body: "{}" });
+    const uid = data.uid || "";
+    if (!uid) return;
+
+    const now = Date.now();
+    if (uid === state.lastAutoUserCardUid && now - state.lastAutoUserCardAt < 8000 && $("#checkoutUser").value) return;
+    state.lastAutoUserCardUid = uid;
+    state.lastAutoUserCardAt = now;
+
+    const user = data.user || state.users.find((item) => String(item.rfid_code || "").toLowerCase() === uid.toLowerCase());
+    if (!user) {
+      if (uid !== state.lastUnknownAutoUserCardUid) {
+        state.lastUnknownAutoUserCardUid = uid;
+        showToast(`Kort UID ${uid} är inte kopplat till någon aktiv användare.`, "warning");
+      }
+      return;
+    }
+
+    state.lastUnknownAutoUserCardUid = "";
+    if ($("#checkoutUser").value !== user.user_id) {
+      selectCheckoutUser(user.user_id);
+      showToast(`Användare vald: ${user.name}`);
+    }
+  } catch (error) {
+    // Auto-scanning stays quiet while no card is present or the reader is momentarily busy.
+  } finally {
+    state.autoUserCardScanBusy = false;
+  }
+}
+
+async function scanUserCardCode() {
+  const button = $("#scanUserCardCodeButton");
+  const originalText = button?.textContent || "";
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Läser...";
+    }
+    const uid = await readSmartcardUid();
+    $("#userCardCode").value = uid;
+    showToast(`Kort läst: ${uid}`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+async function scanCheckoutUserCard() {
+  const button = $("#readUserCardButton");
+  const originalText = button?.textContent || "";
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Läser...";
+    }
+    $("#userScanStatusTitle").textContent = "Läser kort";
+    $("#userScanStatusText").textContent = "Håll kortet stilla på läsaren.";
+
+    const data = await api("/api/users/scan-card", { method: "POST", body: "{}" });
+    const uid = data.uid || "";
+    const user = data.user || state.users.find((item) => String(item.rfid_code || "").toLowerCase() === uid.toLowerCase());
+    if (!user) {
+      $("#userScanStatusTitle").textContent = "Kortet hittades inte";
+      $("#userScanStatusText").textContent = uid ? `UID ${uid} är inte kopplat till någon aktiv användare.` : "Kortet är inte kopplat till någon aktiv användare.";
+      return;
+    }
+
+    selectCheckoutUser(user.user_id);
+    $("#userScanStatusTitle").textContent = "Användare vald";
+    $("#userScanStatusText").textContent = `${user.name} är vald i låneformuläret.`;
+    showToast(`Användare vald: ${user.name}`);
+    setTimeout(closeUserScanModal, 700);
+  } catch (error) {
+    $("#userScanStatusTitle").textContent = "Kunde inte läsa kort";
+    $("#userScanStatusText").textContent = error.message;
+    showToast(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+function openUserCardModal(userId) {
+  const user = state.users.find((item) => item.user_id === userId);
+  if (!user) return;
+  state.cardUserId = userId;
+  $("#userCardTitle").textContent = `Lägg till kort - ${user.name}`;
+  $("#userCardCode").value = user.rfid_code || "";
+  $("#userCardModal").classList.add("open");
+  $("#userCardModal").setAttribute("aria-hidden", "false");
+  $("#userCardCode").focus();
+}
+
+function closeUserCardModal() {
+  $("#userCardModal").classList.remove("open");
+  $("#userCardModal").setAttribute("aria-hidden", "true");
+  state.cardUserId = null;
+}
+
+function generateUserCardCode() {
+  const randomPart = window.crypto?.getRandomValues
+    ? Array.from(window.crypto.getRandomValues(new Uint8Array(6)), (value) => value.toString(16).padStart(2, "0")).join("").toUpperCase()
+    : String(Date.now());
+  $("#userCardCode").value = `KORT-${randomPart}`;
+}
+
+async function saveUserCard(event) {
+  event.preventDefault();
+  if (!state.cardUserId) return;
+  try {
+    const data = await api("/api/users/card", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: state.cardUserId,
+        rfid_code: $("#userCardCode").value,
+      }),
+    });
+    showToast(`Kortkod sparad: ${data.rfid_code}`);
+    closeUserCardModal();
+    await refreshAll();
+    showAdminSettingsSection("users");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 async function saveObject(event) {

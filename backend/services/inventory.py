@@ -6,6 +6,23 @@ from backend.database import connect, row, rows
 from backend.services.common import log_event, now_text, object_status, optional_text, is_truthy
 
 
+def with_description_images(objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    images_by_description: dict[str, str] = {}
+    for item in objects:
+        description = str(item.get("description") or "").strip().lower()
+        image_data = str(item.get("image_data") or "").strip()
+        if description and image_data and description not in images_by_description:
+            images_by_description[description] = image_data
+
+    for item in objects:
+        description = str(item.get("description") or "").strip().lower()
+        image_data = str(item.get("image_data") or "").strip()
+        shared_image_data = images_by_description.get(description, "") if description else ""
+        item["display_image_data"] = image_data or shared_image_data
+        item["shared_image_data"] = "" if image_data else shared_image_data
+    return objects
+
+
 def list_objects(search: str = "", category: str = "Alla", status: str = "Alla") -> list[dict[str, Any]]:
     query = "SELECT * FROM objects WHERE 1 = 1"
     params: list[Any] = []
@@ -34,7 +51,7 @@ def list_objects(search: str = "", category: str = "Alla", status: str = "Alla")
         params.append(status)
 
     query += " ORDER BY category, name"
-    return rows(query, tuple(params))
+    return with_description_images(rows(query, tuple(params)))
 
 
 def search_objects(term: str, limit: int = 8) -> list[dict[str, Any]]:
@@ -42,7 +59,7 @@ def search_objects(term: str, limit: int = 8) -> list[dict[str, Any]]:
     if not term:
         return []
     like_term = f"%{term}%"
-    return rows(
+    return with_description_images(rows(
         """
         SELECT *
         FROM objects
@@ -86,7 +103,7 @@ def search_objects(term: str, limit: int = 8) -> list[dict[str, Any]]:
             like_term,
             limit,
         ),
-    )
+    ))
 
 
 def add_object(payload: dict[str, Any]) -> dict[str, Any]:

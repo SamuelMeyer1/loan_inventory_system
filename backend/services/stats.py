@@ -33,6 +33,18 @@ def dashboard_stats() -> dict[str, int]:
 def statistics_data() -> dict[str, Any]:
     summary = dashboard_stats()
     summary["active_loan_rows"] = int(row("SELECT COUNT(*) AS value FROM loans WHERE status = 'active'")["value"])
+    summary["orphan_active_loans"] = int(
+        row(
+            """
+            SELECT COUNT(*) AS value
+            FROM loans l
+            LEFT JOIN loan_requests r ON r.request_id = l.loan_request_id
+            WHERE l.status = 'active'
+              AND l.loan_request_id IS NOT NULL
+              AND r.request_id IS NULL
+            """
+        )["value"]
+    )
     summary["ready_pickup"] = int(row("SELECT COUNT(*) AS value FROM loan_requests WHERE status = 'prepared'")["value"])
     summary["loaned_jobs"] = int(row("SELECT COUNT(*) AS value FROM loan_requests WHERE status = 'loaned'")["value"])
     summary["returned_jobs"] = int(row("SELECT COUNT(*) AS value FROM loan_requests WHERE status = 'returned'")["value"])

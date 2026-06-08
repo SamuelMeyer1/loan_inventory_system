@@ -27,7 +27,7 @@ function renderSearchResults(results) {
   $("#objectResultsTab").textContent = `${t("search.objects")} (${results.length})`;
   $("#searchResultsGrid").innerHTML = results.map((item) => `
     <article class="search-card">
-      <div class="search-card-visual">${item.image_data ? `<img src="${escapeHtml(item.image_data)}" alt="">` : escapeHtml(item.category)}</div>
+      <div class="search-card-visual">${objectDisplayImage(item) ? `<img src="${escapeHtml(objectDisplayImage(item))}" alt="">` : escapeHtml(item.category)}</div>
       <div class="search-card-body">
         <div class="search-card-title">${escapeHtml(item.name)}</div>
         <div class="search-card-meta">${escapeHtml(item.article_number || item.object_id)} ${item.supplier_article_number ? `· ${escapeHtml(item.supplier_article_number)}` : ""}</div>

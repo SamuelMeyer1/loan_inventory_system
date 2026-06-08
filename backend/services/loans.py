@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from backend.database import connect, row, rows
-from backend.services.notifications import get_system_settings, notify_rule_recipients
+from backend.services.notifications import get_system_settings, message_text, notify_rule_recipients, send_email
 from backend.services.common import (
     is_consumable_object,
     log_event,
@@ -18,7 +18,8 @@ from backend.services.common import (
 def list_active_loans() -> list[dict[str, Any]]:
     loans = rows(
         """
-        SELECT l.*, u.name AS user_name, u.department AS user_department, o.name AS object_name, o.tornado_id, o.door_id
+        SELECT l.*, u.name AS user_name, u.department AS user_department, u.email AS user_email,
+               o.name AS object_name, o.tornado_id, o.door_id
         FROM loans l
         JOIN users u ON u.user_id = l.user_id
         JOIN objects o ON o.object_id = l.object_id
@@ -106,6 +107,20 @@ def close_consumable_report(report_id: int) -> dict[str, Any]:
 REQUEST_STATUSES = ("requested", "prepared", "loaned", "returned", "stocked")
 
 
+def validate_loan_period(lending_date: str, return_date: str, settings: dict[str, str] | None = None) -> None:
+    settings = settings or get_system_settings()
+    try:
+        start = datetime.fromisoformat(lending_date.replace(" ", "T")).date()
+        end = datetime.fromisoformat(return_date.replace(" ", "T")).date()
+    except ValueError:
+        raise ValueError("Ange giltiga lånedatum.")
+    if end < start:
+        raise ValueError("Returdatum kan inte vara före utlåningsdatum.")
+    max_days = max(1, int(settings.get("max_loan_days") or "90"))
+    if (end - start).days > max_days:
+        raise ValueError(f"Max lånetid är {max_days} dagar.")
+
+
 def overdue_loan_count(user_id: str, db=None) -> int:
     query = """
         SELECT COUNT(*) AS overdue_count
@@ -127,6 +142,13 @@ def ensure_user_can_borrow(user_id: str, user_name: str = "", db=None) -> None:
     settings = get_system_settings()
     if settings.get("overdue_block_enabled") != "1":
         return
+    user_query = "SELECT borrow_override FROM users WHERE user_id = ?"
+    if db is not None:
+        user_override = db.execute(user_query, (user_id,)).fetchone()
+    else:
+        user_override = row(user_query, (user_id,))
+    if user_override and int(user_override["borrow_override"] or 0) == 1:
+        return
 
     try:
         limit = int(settings.get("overdue_block_limit") or "3")
@@ -140,8 +162,7 @@ def ensure_user_can_borrow(user_id: str, user_name: str = "", db=None) -> None:
 
     borrower = user_name or "Användaren"
     raise ValueError(
-        f"{borrower} är spärrad för nya lån eftersom {overdue_count} aktiva lån är sena. "
-        f"Gränsen är {limit}. Lämna tillbaka sena lån eller ändra spärrgränsen i Admin."
+        f"ERROR {borrower} är spärrad för nya lån eftersom aktiva lån inte lämnats tillbaka. Kontakta ELLAB."
     )
 
 
@@ -193,15 +214,34 @@ def create_loan_request(payload: dict[str, Any]) -> dict[str, Any]:
     if object_item is None:
         raise ValueError("Objektet hittades inte.")
     if is_consumable_object(dict(object_item)):
-        raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Anmäl slut på lager.")
+        raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Förbrukningsvara.")
     user = row("SELECT * FROM users WHERE user_id = ? AND active = 1", (user_id,))
     if user is None:
         raise ValueError("Användaren hittades inte.")
 
     ensure_user_can_borrow(user_id, user["name"])
+    settings = get_system_settings()
+    validate_loan_period(lending_date, return_date, settings)
 
     timestamp = now_text()
     with connect() as db:
+        duplicate = db.execute(
+            """
+            SELECT request_id
+            FROM loan_requests
+            WHERE user_id = ?
+              AND object_id = ?
+              AND lending_date = ?
+              AND return_date = ?
+              AND status IN ('requested', 'prepared')
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (user_id, object_id, lending_date, return_date),
+        ).fetchone()
+        if duplicate:
+            raise ValueError(f"Det finns redan en öppen låneförfrågan #{duplicate['request_id']} för samma användare och objekt.")
+
         cursor = db.execute(
             """
             INSERT INTO loan_requests (
@@ -217,20 +257,21 @@ def create_loan_request(payload: dict[str, Any]) -> dict[str, Any]:
             "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
             (timestamp, "request", f"Låneförfrågan skapad: {user['name']} vill låna {quantity} x {object_item['name']} ({object_id})"),
         )
-    settings = get_system_settings()
     if settings.get("notify_new_job") == "1":
         try:
+            message_values = {
+                "request_id": request_id,
+                "user_name": user["name"],
+                "object_name": object_item["name"],
+                "object_id": object_id,
+                "quantity": quantity,
+                "lending_date": lending_date,
+                "return_date": return_date,
+            }
             notify_rule_recipients(
                 "notification_recipients_new_job",
-                f"Nytt lånejobb #{request_id}",
-                (
-                    f"Ett nytt lånejobb har skapats.\n\n"
-                    f"Användare: {user['name']}\n"
-                    f"Objekt: {object_item['name']} ({object_id})\n"
-                    f"Antal: {quantity}\n"
-                    f"Utlåningsdatum: {lending_date}\n"
-                    f"Returdatum: {return_date}\n"
-                ),
+                message_text(settings, "message_new_job_subject", message_values),
+                message_text(settings, "message_new_job_body", message_values),
                 settings,
             )
         except Exception as error:
@@ -259,11 +300,11 @@ def update_loan_request_status(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if request is None:
         raise ValueError("Jobbet hittades inte.")
-
     timestamp = now_text()
+    new_available_quantity = None
     with connect() as db:
         if status == "loaned":
-            ensure_loan_for_request(db, request, timestamp)
+            new_available_quantity = ensure_loan_for_request(db, request, timestamp)
         elif status == "returned":
             return_linked_loan_for_request(db, request, timestamp)
 
@@ -278,36 +319,44 @@ def update_loan_request_status(payload: dict[str, Any]) -> dict[str, Any]:
     settings = get_system_settings()
     if status == "returned" and settings.get("notify_returned_loan") == "1":
         try:
+            message_values = {
+                "request_id": request_id,
+                "user_name": request["user_name"],
+                "object_name": request["object_name"],
+                "object_id": request["object_id"],
+                "quantity": request["quantity"],
+            }
             notify_rule_recipients(
                 "notification_recipients_returned_loan",
-                f"Lån återlämnat #{request_id}",
-                (
-                    "Ett lån har markerats som återlämnat.\n\n"
-                    f"Användare: {request['user_name']}\n"
-                    f"Objekt: {request['object_name']} ({request['object_id']})\n"
-                    f"Antal: {request['quantity']}\n"
-                ),
+                message_text(settings, "message_returned_loan_subject", message_values),
+                message_text(settings, "message_returned_loan_body", message_values),
                 settings,
             )
         except Exception as error:
             log_event("notification", f"Kunde inte skicka återlämningsnotis #{request_id}: {error}")
     if status == "loaned":
         quantity = int(request["quantity"])
-        available = int(request["available_quantity"]) - quantity
+        available = new_available_quantity
+        if available is None:
+            current_object = row("SELECT available_quantity FROM objects WHERE object_id = ?", (request["object_id"],))
+            available = int(current_object["available_quantity"]) if current_object else 0
         min_quantity = int(request["min_quantity"] or 0)
         should_notify_empty = available <= 0 and settings.get("notify_empty_stock") == "1"
         should_notify_low = 0 < available <= min_quantity and settings.get("notify_low_stock") == "1"
         if should_notify_empty or should_notify_low:
             try:
                 level = "tomt lager" if should_notify_empty else "låg lagernivå"
+                message_values = {
+                    "object_name": request["object_name"],
+                    "object_id": request["object_id"],
+                    "level": level,
+                    "available": available,
+                    "min_quantity": min_quantity,
+                }
                 notify_rule_recipients(
                     "notification_recipients_empty_stock" if should_notify_empty else "notification_recipients_low_stock",
-                    f"Lagerlarm: {request['object_name']}",
-                    (
-                        f"{request['object_name']} ({request['object_id']}) har {level}.\n\n"
-                        f"Saldo efter utlåning: {available}\n"
-                        f"Beställningspunkt: {min_quantity}\n"
-                    ),
+                    message_text(settings, "message_stock_alert_subject", message_values),
+                    message_text(settings, "message_stock_alert_body", message_values),
                     settings,
                 )
             except Exception as error:
@@ -315,17 +364,92 @@ def update_loan_request_status(payload: dict[str, Any]) -> dict[str, Any]:
     return {"request_id": request_id, "status": status}
 
 
-def ensure_loan_for_request(db, request: dict[str, Any], timestamp: str) -> None:
+def update_loan_request_details(payload: dict[str, Any]) -> dict[str, Any]:
+    request_id = int(payload.get("request_id", 0))
+    if request_id <= 0:
+        raise ValueError("Ange jobb-ID.")
+
+    request = row(
+        """
+        SELECT r.*, u.name AS user_name, o.name AS object_name
+        FROM loan_requests r
+        JOIN users u ON u.user_id = r.user_id
+        JOIN objects o ON o.object_id = r.object_id
+        WHERE r.request_id = ?
+        """,
+        (request_id,),
+    )
+    if request is None:
+        raise ValueError("Jobbet hittades inte.")
+    if request["status"] in ("returned", "stocked"):
+        raise ValueError("Återlämnade och lagerförda jobb kan inte ändras.")
+
+    engine_id = optional_text(payload, "engine_id")
+    project_number = optional_text(payload, "project_number")
+    return_date = str(payload.get("return_date", "")).strip()
+    if not return_date:
+        raise ValueError("Ange returdatum.")
+
+    active_loan = row("SELECT * FROM loans WHERE loan_request_id = ? AND status = 'active'", (request_id,))
+    if active_loan:
+        lending_date = str(request["lending_date"])
+        quantity = int(request["quantity"])
+    else:
+        lending_date = str(payload.get("lending_date", "")).strip()
+        quantity = int(payload.get("quantity", request["quantity"]))
+        if not lending_date:
+            raise ValueError("Ange utlåningsdatum.")
+        if quantity <= 0:
+            raise ValueError("Antal måste vara större än 0.")
+
+    validate_loan_period(lending_date, return_date)
+    timestamp = now_text()
+    with connect() as db:
+        db.execute(
+            """
+            UPDATE loan_requests
+            SET quantity = ?, engine_id = ?, project_number = ?,
+                lending_date = ?, return_date = ?, updated_at = ?
+            WHERE request_id = ?
+            """,
+            (quantity, engine_id, project_number, lending_date, return_date, timestamp, request_id),
+        )
+        if active_loan:
+            due_value = f"{return_date} 16:00:00" if len(return_date) == 10 else return_date
+            db.execute(
+                """
+                UPDATE loans
+                SET due_time = ?, engine_id = ?, project_number = ?
+                WHERE loan_id = ?
+                """,
+                (due_value, engine_id, project_number, active_loan["loan_id"]),
+            )
+        db.execute(
+            "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
+            (timestamp, "job", f"Jobb {request_id} uppdaterades: {request['object_name']} för {request['user_name']}"),
+        )
+    return {"request_id": request_id}
+
+
+def ensure_loan_for_request(db, request: dict[str, Any], timestamp: str) -> int | None:
     existing = db.execute(
         "SELECT loan_id FROM loans WHERE loan_request_id = ?",
         (request["request_id"],),
     ).fetchone()
     if existing:
-        return
+        return None
 
     quantity = int(request["quantity"])
-    ensure_user_can_borrow(request["user_id"], request.get("user_name", ""), db)
-    if int(request["available_quantity"]) < quantity:
+    ensure_user_can_borrow(request["user_id"], request["user_name"] or "", db)
+    object_item = db.execute(
+        "SELECT available_quantity, min_quantity FROM objects WHERE object_id = ?",
+        (request["object_id"],),
+    ).fetchone()
+    if object_item is None:
+        raise ValueError("Objektet hittades inte.")
+    current_available = int(object_item["available_quantity"])
+    min_quantity = int(object_item["min_quantity"] or 0)
+    if current_available < quantity:
         raise ValueError("Det finns inte tillräckligt antal tillgängligt för att låna ut jobbet.")
 
     checkout_time = f"{request['lending_date']} 08:00:00" if len(request["lending_date"]) == 10 else request["lending_date"]
@@ -349,15 +473,23 @@ def ensure_loan_for_request(db, request: dict[str, Any], timestamp: str) -> None
             request["request_id"],
         ),
     )
-    available = int(request["available_quantity"]) - quantity
-    db.execute(
-        "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ?",
-        (available, object_status(available, int(request["min_quantity"] or 0)), request["object_id"]),
+    available = current_available - quantity
+    cursor = db.execute(
+        """
+        UPDATE objects
+        SET available_quantity = ?, status = ?
+        WHERE object_id = ?
+          AND available_quantity >= ?
+        """,
+        (available, object_status(available, min_quantity), request["object_id"], quantity),
     )
+    if cursor.rowcount != 1:
+        raise ValueError("Det finns inte tillräckligt antal tillgängligt för att låna ut jobbet.")
     db.execute(
         "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
         (timestamp, "loan", f"{request['user_name']} lånade {quantity} x {request['object_name']} ({request['object_id']}) via jobb {request['request_id']}"),
     )
+    return available
 
 
 def return_linked_loan_for_request(db, request: dict[str, Any], timestamp: str) -> None:
@@ -420,6 +552,58 @@ def delete_loan_request(request_id: int) -> dict[str, Any]:
     return {"request_id": request_id}
 
 
+def send_pickup_ready_email(request_id: int) -> dict[str, Any]:
+    if request_id <= 0:
+        raise ValueError("Ange jobb-ID.")
+
+    request = row(
+        """
+        SELECT r.*, u.name AS user_name, u.email AS user_email, o.name AS object_name
+        FROM loan_requests r
+        JOIN users u ON u.user_id = r.user_id
+        JOIN objects o ON o.object_id = r.object_id
+        WHERE r.request_id = ?
+        """,
+        (request_id,),
+    )
+    if request is None:
+        raise ValueError("Jobbet hittades inte.")
+    if request["status"] != "prepared":
+        raise ValueError("Jobbet måste vara Redo att hämta innan mail kan skickas.")
+    if not str(request["user_email"] or "").strip():
+        raise ValueError("Låntagaren saknar e-postadress.")
+
+    settings = get_system_settings()
+    if settings.get("notify_pickup_ready") != "1":
+        raise ValueError("Mail för klar att hämta är avstängt i Admin-inställningar.")
+    message_values = {
+        "request_id": request_id,
+        "user_name": request["user_name"],
+        "object_name": request["object_name"],
+        "object_id": request["object_id"],
+        "quantity": request["quantity"],
+        "lending_date": request["lending_date"],
+        "return_date": request["return_date"],
+    }
+    sent = send_email(
+        message_text(settings, "message_pickup_ready_subject", message_values),
+        message_text(settings, "message_pickup_ready_body", message_values),
+        [request["user_email"]],
+        settings,
+    )
+    timestamp = now_text()
+    with connect() as db:
+        db.execute(
+            "UPDATE loan_requests SET pickup_ready_email_sent_at = ?, updated_at = ? WHERE request_id = ?",
+            (timestamp, timestamp, request_id),
+        )
+        db.execute(
+            "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
+            (timestamp, "notification", f"Mail om redo att hämta skickat för jobb #{request_id}: {sent}"),
+        )
+    return {"request_id": request_id, "sent": sent, "pickup_ready_email_sent_at": timestamp}
+
+
 def checkout(payload: dict[str, Any]) -> dict[str, Any]:
     object_id = str(payload.get("object_id", "")).strip()
     user_id = str(payload.get("user_id", "")).strip()
@@ -444,7 +628,7 @@ def checkout(payload: dict[str, Any]) -> dict[str, Any]:
     if object_item is None:
         raise ValueError("Objektet hittades inte.")
     if is_consumable_object(dict(object_item)):
-        raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Anmäl slut på lager.")
+        raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Förbrukningsvara.")
     if object_item["available_quantity"] < quantity:
         raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
 
@@ -453,6 +637,7 @@ def checkout(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Användaren hittades inte.")
 
     ensure_user_can_borrow(user_id, user["name"])
+    validate_loan_period(lending_date, due_time)
 
     checkout_time = f"{lending_date} 08:00:00" if len(lending_date) == 10 else lending_date
     due_value = f"{due_time} 16:00:00" if len(due_time) == 10 else due_time
@@ -546,7 +731,7 @@ def return_item(payload: dict[str, Any]) -> dict[str, Any]:
             "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ?",
             (available, object_status(available, object_item["min_quantity"]), active_loan["object_id"]),
         )
-        if active_loan.get("loan_request_id"):
+        if active_loan["loan_request_id"]:
             db.execute(
                 "UPDATE loan_requests SET status = 'returned', updated_at = ? WHERE request_id = ?",
                 (returned_at, active_loan["loan_request_id"]),
