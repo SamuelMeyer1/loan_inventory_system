@@ -4,6 +4,8 @@
 
 const state = {
   objects: [],
+  loanCart: [],
+  returnBusy: false,
   users: [],
   groups: [],
   loans: [],
@@ -100,14 +102,14 @@ function setView(view) {
 async function refreshAll() {
   const [stats, statistics, objects, users, groups, loans, jobs, consumableReports, events, systemSettings] = await Promise.all([
     api("/api/stats"),
-    api("/api/statistics"),
+    state.role === "operator" ? Promise.resolve({}) : api("/api/statistics"),
     api("/api/objects"),
     api("/api/users"),
-    api("/api/groups"),
+    state.role === "operator" ? Promise.resolve([]) : api("/api/groups"),
     api("/api/loans"),
     api("/api/loan-requests"),
-    api("/api/consumable-reports"),
-    api("/api/events?limit=100"),
+    state.role === "operator" ? Promise.resolve([]) : api("/api/consumable-reports"),
+    state.role === "superadmin" ? api("/api/events?limit=100") : Promise.resolve([]),
     api("/api/system-settings"),
   ]);
 
@@ -193,6 +195,12 @@ function renderSystemSettings() {
   setValue("#smtpPort", settings.smtp_port || "587");
   setValue("#smtpUsername", settings.smtp_username || "");
   setValue("#smtpPassword", "");
+  const smtpPasswordInput = $("#smtpPassword");
+  if (smtpPasswordInput) {
+    smtpPasswordInput.placeholder = settings.smtp_password_configured
+      ? "Lösenord sparat – lämna tomt för att behålla"
+      : "Ange SMTP-lösenord";
+  }
   setValue("#smtpFromAddress", settings.smtp_from_address || "");
   setChecked("#smtpUseTls", settings.smtp_use_tls !== "0");
   setChecked("#teamsEnabled", settings.teams_enabled === "1");
@@ -353,6 +361,7 @@ function showSystemSettingsSection(section) {
 }
 
 function showAdminSettingsSection(section) {
+  if (section === "settings" && state.role !== "superadmin") section = "add-object";
   document.querySelectorAll(".admin-settings-nav-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.adminSection === section);
   });
@@ -959,7 +968,8 @@ function stepDashboardTip(direction) {
 
 function nextJobAction(status) {
   const transitions = {
-    requested: ["prepared", "jobs.nextPrepared"],
+    requested: ["approved", "jobs.nextApproved"],
+    approved: ["prepared", "jobs.nextPrepared"],
     prepared: ["loaned", "jobs.nextLoaned"],
     loaned: ["returned", "jobs.nextReturned"],
     returned: ["stocked", "jobs.nextStocked"],
@@ -972,27 +982,35 @@ function renderJobs() {
   if (!jobsBoard) return;
   jobsBoard.classList.toggle("jobs-collapsed", state.jobsCollapsed);
   const filteredJobs = getFilteredJobs();
+  const visibleGroupIds = [...new Set(filteredJobs.map((job) => Number(job.request_group_id || job.request_id)))];
+  const groups = visibleGroupIds.map((groupId) => groupLoanRequestRows(
+    state.jobs.filter((job) => Number(job.request_group_id || job.request_id) === groupId)
+  )[0]);
   const columns = [
     { status: "requested", tone: "yellow" },
+    { status: "approved", tone: "blue" },
     { status: "prepared", tone: "green" },
     { status: "loaned", tone: "blue" },
     { status: "returned", tone: "yellow" },
     { status: "stocked", tone: "gray" },
   ];
   jobsBoard.innerHTML = columns.map((column) => {
-    const jobs = filteredJobs.filter((job) => job.status === column.status);
+    const columnGroups = groups.filter((group) => group.status === column.status);
     return `
       <section class="job-column job-column-${column.tone}">
         <header class="job-column-header">
           <h2>${escapeHtml(jobStatusText(column.status))}</h2>
-          <span>${jobs.length}</span>
+          <span>${columnGroups.length}</span>
         </header>
         <div class="job-column-list" data-job-drop-status="${column.status}">
-          ${jobs.length ? jobs.map(renderJobCard).join("") : `<div class="job-empty">${escapeHtml(t("jobs.empty"))}</div>`}
+          ${columnGroups.length ? columnGroups.map(renderJobGroup).join("") : `<div class="job-empty">${escapeHtml(t("jobs.empty"))}</div>`}
         </div>
       </section>
     `;
   }).join("");
+  document.querySelectorAll("[data-job-group-id]").forEach((button) => {
+    button.addEventListener("click", () => updateJobGroupStatus(Number(button.dataset.jobGroupId), button.dataset.jobStatus));
+  });
   document.querySelectorAll("[data-job-id]").forEach((button) => {
     button.addEventListener("click", () => updateJobStatus(Number(button.dataset.jobId), button.dataset.jobStatus));
   });
@@ -1002,11 +1020,8 @@ function renderJobs() {
   document.querySelectorAll("[data-pickup-email]").forEach((button) => {
     button.addEventListener("click", () => sendPickupReadyEmail(Number(button.dataset.pickupEmail), button));
   });
-  document.querySelectorAll("[data-open-job-id]").forEach((card) => {
-    card.addEventListener("click", (event) => {
-      if (event.target.closest("button, summary, details")) return;
-      openJobDetail(Number(card.dataset.openJobId));
-    });
+  document.querySelectorAll("[data-open-job-id]").forEach((button) => {
+    button.addEventListener("click", () => openJobDetail(Number(button.dataset.openJobId)));
   });
   bindJobDragAndDrop();
 }
@@ -1031,6 +1046,7 @@ function getFilteredJobs() {
   const filtered = state.jobs.filter((job) => {
     const searchable = [
       job.request_id,
+      job.request_group_id,
       job.object_id,
       job.object_name,
       job.user_name,
@@ -1078,51 +1094,61 @@ function renderConsumableReports() {
   });
 }
 
-function renderJobCard(job) {
-  const action = nextJobAction(job.status);
-  const pickupEmailSent = Boolean(job.pickup_ready_email_sent_at);
-  const pickupEmailButton = job.status === "prepared"
-    ? `<button class="job-pickup-email-button ${pickupEmailSent ? "is-muted" : ""}" type="button" data-pickup-email="${job.request_id}" ${pickupEmailSent ? "disabled" : ""} title="${pickupEmailSent ? (state.language === "en" ? "Pickup email sent" : "Hämtningsmail skickat") : (state.language === "en" ? "Send pickup email" : "Skicka hämtningsmail")}" aria-label="${pickupEmailSent ? (state.language === "en" ? "Pickup email sent" : "Hämtningsmail skickat") : (state.language === "en" ? "Send pickup email" : "Skicka hämtningsmail")}">
+function renderJobGroup(group) {
+  const first = group.items[0];
+  const action = nextJobAction(group.status);
+  const pickupEmailSent = group.items.every((job) => Boolean(job.pickup_ready_email_sent_at));
+  const allPrepared = group.items.every((job) => job.status === "prepared");
+  const pickupEmailButton = allPrepared
+    ? `<button class="job-pickup-email-button ${pickupEmailSent ? "is-muted" : ""}" type="button" data-pickup-email="${group.id}" ${pickupEmailSent ? "disabled" : ""} title="${pickupEmailSent ? (state.language === "en" ? "Pickup email sent" : "Hämtningsmail skickat") : (state.language === "en" ? "Send pickup email for all articles" : "Skicka hämtningsmail för alla artiklar")}" aria-label="${pickupEmailSent ? (state.language === "en" ? "Pickup email sent" : "Hämtningsmail skickat") : (state.language === "en" ? "Send pickup email for all articles" : "Skicka hämtningsmail för alla artiklar")}">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M22 2 11 13"></path>
           <path d="m22 2-7 20-4-9-9-4Z"></path>
         </svg>
-      </button>`
-    : "";
+      </button>` : "";
+  const statusCounts = JOB_REQUEST_STATUS_ORDER
+    .map((status) => [status, group.items.filter((job) => job.status === status).length])
+    .filter(([, count]) => count)
+    .map(([status, count]) => `${count} ${escapeHtml(jobStatusText(status)).toLowerCase()}`)
+    .join(" · ");
   return `
-    <article class="job-card" draggable="true" data-open-job-id="${job.request_id}" data-drag-job-id="${job.request_id}" data-drag-job-status="${job.status}">
-	      <div class="job-card-top">
-	        <strong>#${job.request_id}</strong>
-        <span class="job-card-top-right">
-          ${pickupEmailButton}
-          <span>${escapeHtml(job.object_id)}</span>
-        </span>
-	      </div>
-      <h3>${escapeHtml(job.object_name)}</h3>
+    <article class="request-group" draggable="true" data-drag-group-id="${group.id}" data-drag-job-status="${group.status}">
+      <div class="job-card-top">
+        <strong>${state.language === "en" ? "Request" : "Förfrågan"} #${group.id}</strong>
+        <span class="job-card-top-right">${pickupEmailButton}<span>${group.items.length} ${state.language === "en" ? "articles" : "artiklar"}</span></span>
+      </div>
+      <h3>${escapeHtml(first.user_name)}</h3>
       <div class="job-card-summary">
-        <span>${escapeHtml(job.user_name)}</span>
-        <span>${escapeHtml(t("table.storage"))}: ${escapeHtml(job.object_location || "")}</span>
-        <span>${escapeHtml(t("table.store"))}: ${escapeHtml(job.object_store || "")}</span>
+        <span>${escapeHtml(first.user_department || "")}</span>
+        <span>${escapeHtml(t("field.lendingDate"))}: ${escapeHtml(first.lending_date || "")}</span>
+        <span>${escapeHtml(t("field.returnDate"))}: ${escapeHtml(first.return_date || "")}</span>
+        ${group.partial ? `<strong class="job-partial-status">${state.language === "en" ? "Mixed status" : "Delvis klar"}: ${statusCounts}</strong>` : ""}
       </div>
       <details class="job-card-details">
-        <summary>${state.language === "en" ? "Details" : "Detaljer"}</summary>
-        <dl>
-          <dt>${escapeHtml(t("table.borrower"))}</dt><dd>${escapeHtml(job.user_name)}</dd>
-          <dt>${escapeHtml(t("table.deptNo"))}</dt><dd>${escapeHtml(job.user_department || "")}</dd>
-          <dt>${escapeHtml(t("table.storage"))}</dt><dd>${escapeHtml(job.object_location || "")}</dd>
-          <dt>${escapeHtml(t("table.store"))}</dt><dd>${escapeHtml(job.object_store || "")}</dd>
-          <dt>${escapeHtml(t("field.engineId"))}</dt><dd>${escapeHtml(job.engine_id || "")}</dd>
-          <dt>${escapeHtml(t("table.projectNo"))}</dt><dd>${escapeHtml(job.project_number || "")}</dd>
-          <dt>${escapeHtml(t("field.quantity"))}</dt><dd>${job.quantity}</dd>
-          <dt>${escapeHtml(t("field.lendingDate"))}</dt><dd>${escapeHtml(job.lending_date)}</dd>
-          <dt>${escapeHtml(t("field.returnDate"))}</dt><dd>${escapeHtml(job.return_date)}</dd>
-        </dl>
+        <summary>${state.language === "en" ? "Show articles" : "Visa artiklar"}</summary>
+        <div class="job-group-items">${group.items.map(renderJobGroupItem).join("")}</div>
       </details>
-	      <div class="job-card-actions">
-        ${action ? `<button class="table-action-button" type="button" data-job-id="${job.request_id}" data-job-status="${action[0]}">${t(action[1])}</button>` : ""}
-        <button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>
+      <div class="job-card-actions">
+        ${action ? `<button class="primary-button" type="button" data-job-group-id="${group.id}" data-job-status="${action[0]}">${escapeHtml(t(action[1]))}</button>` : ""}
       </div>
     </article>
+  `;
+}
+
+function renderJobGroupItem(job) {
+  const action = nextJobAction(job.status);
+  return `
+    <div class="job-group-item">
+      <div>
+        <strong>${escapeHtml(job.object_name)}</strong>
+        <span>${escapeHtml(job.object_id)} · ${job.quantity} st · ${escapeHtml(jobStatusText(job.status))}</span>
+      </div>
+      <div class="job-group-item-actions">
+        <button class="secondary-button" type="button" data-open-job-id="${job.request_id}">${state.language === "en" ? "Details" : "Detaljer"}</button>
+        ${action ? `<button class="table-action-button" type="button" data-job-id="${job.request_id}" data-job-status="${action[0]}">${escapeHtml(jobStatusText(action[0]))}</button>` : ""}
+        <button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>
+      </div>
+    </div>
   `;
 }
 
@@ -1317,12 +1343,12 @@ function bindJobDragAndDrop() {
   const placeholder = document.createElement("div");
   placeholder.className = "job-drop-placeholder";
 
-  document.querySelectorAll("[data-drag-job-id]").forEach((card) => {
+  document.querySelectorAll("[data-drag-group-id]").forEach((card) => {
     card.addEventListener("dragstart", (event) => {
       draggedCard = card;
       card.classList.add("dragging");
       event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", card.dataset.dragJobId);
+      event.dataTransfer.setData("text/plain", card.dataset.dragGroupId);
     });
     card.addEventListener("dragend", () => {
       card.classList.remove("dragging");
@@ -1351,22 +1377,24 @@ function bindJobDragAndDrop() {
     zone.addEventListener("drop", (event) => {
       event.preventDefault();
       zone.classList.remove("drag-over");
-      const requestId = Number(event.dataTransfer.getData("text/plain"));
+      const requestGroupId = Number(event.dataTransfer.getData("text/plain"));
       const status = zone.dataset.jobDropStatus;
-      const job = state.jobs.find((item) => item.request_id === requestId);
-      if (!job) return;
+      const group = groupLoanRequestRows(state.jobs.filter(
+        (item) => Number(item.request_group_id || item.request_id) === requestGroupId
+      ))[0];
+      if (!group) return;
       if (draggedCard && placeholder.parentElement === zone) {
         zone.insertBefore(draggedCard, placeholder);
       }
       placeholder.remove();
-      if (job.status === status) return;
-      updateJobStatus(requestId, status);
+      if (group.status === status) return;
+      updateJobGroupStatus(requestGroupId, status);
     });
   });
 }
 
 function getDragAfterElement(container, y) {
-  const draggableElements = [...container.querySelectorAll(".job-card:not(.dragging)")];
+  const draggableElements = [...container.querySelectorAll(".request-group:not(.dragging)")];
   return draggableElements.reduce((closest, child) => {
     const box = child.getBoundingClientRect();
     const offset = y - box.top - box.height / 2;
@@ -1394,6 +1422,12 @@ function renderEvents() {
 // ============================================================
 
 function applyRole() {
+  const settingsButton = document.querySelector('[data-admin-section="settings"]');
+  if (settingsButton) settingsButton.hidden = state.role !== "superadmin";
+  ["#openQuickUserButton", "#openUserScanButton"].forEach((selector) => {
+    const button = document.querySelector(selector);
+    if (button) button.hidden = state.role === "operator";
+  });
   document.querySelectorAll(".nav-button").forEach((button) => {
     const roles = button.dataset.roles.split(",");
     button.hidden = !roles.includes(state.role);
@@ -1578,7 +1612,18 @@ function bindEvents() {
 	  $("#pickupUserSearch")?.addEventListener("input", renderPickupUserSuggestions);
 	  $("#myLoansUserSearch")?.addEventListener("input", renderMyLoansUserSuggestions);
 
-	  $("#requestLoanButton").addEventListener("click", requestLoan);
+	  $("#addLoanArticle").addEventListener("click", () => {
+      try { addLoanArticle(); } catch (error) { showToast(error.message); }
+    });
+    $("#checkoutForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      if ($("#checkoutObjectId").value.trim()) {
+        try { addLoanArticle(); } catch (error) { showToast(error.message); }
+      }
+    });
+    $("#returnSelectedButton").addEventListener("click", () => returnSelectedLoans());
+    $("#returnAllButton").addEventListener("click", () => returnSelectedLoans(true));
+    $("#requestLoanButton").addEventListener("click", requestLoan);
 	  $("#consumableReportForm")?.addEventListener("submit", saveConsumableReport);
 	  $("#addObjectForm").addEventListener("submit", saveObject);
   $("#addUserForm").addEventListener("submit", saveUser);
@@ -1635,7 +1680,7 @@ function bindEvents() {
 
   $("#newObjectImage").addEventListener("change", updateImagePreview);
   $("#roleSelect").addEventListener("change", () => {
-    state.role = $("#roleSelect").value;
+    $("#roleSelect").value = state.role;
     applyRole();
   });
 
@@ -1668,7 +1713,8 @@ function bindEvents() {
 // Kor nar sidan laddas.
 // ============================================================
 
-function init() {
+async function init() {
+  if (!await establishSession()) return;
   populateNumberSelects();
   bindEvents();
   setDefaultDates();
@@ -1676,4 +1722,4 @@ function init() {
   refreshAll().catch((error) => showToast(error.message));
 }
 
-init();
+init().catch((error) => showToast(error.message));

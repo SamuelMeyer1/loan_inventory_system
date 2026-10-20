@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="sv">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dataskydd / Privacy</title><link rel="stylesheet" href="/styles.css"></head>
+<body><main class="privacy-login">
+  <a href="/">Till appen / Back to application</a>
+  <h1>Dataskydd / Privacy</h1>
+  <p>Uppgifterna används för att hantera utlåning. / Data is used to manage equipment loans.</p>
+  <p>Kontakta ansvarig nedan för tillgång, rättelse, radering och frågor om dina rättigheter. Rättigheterna beror på behandlingens rättsliga grund. Du kan lämna klagomål till IMY. / Contact the controller below for access, correction, deletion and questions about your rights. Rights depend on the legal basis. Complaints can be submitted to IMY.</p>
+  <p>Detaljerade personuppgifter: namn, mejl, avdelning, lånehistorik samt eventuella frivilliga profilfält och kortkopplingar. / Personal data: name, email, department, loan history, optional profile fields and card associations.</p>
+  <p>Behöriga lageradministratörer hanterar lån; operatörer ser egna uppgifter. Inga externa analysskript laddas. Mejlintegrationer, säkerhetskopior och driftsmiljö måste beskrivas och godkännas av verksamheten. / Authorised inventory staff manage loans; operators see their own data. No external analytics scripts are loaded. The organisation must document and approve email integrations, backups and hosting.</p>
+  <pre id="notice"></pre>
+  <p id="message" role="status"></p>
+  <section id="privacyAdmin" hidden>
+    <h2>Systemadministration / System administration</h2>
+    <p>Denna sida stödjer arbetet med dataskydd. Den är inget intyg om GDPR-efterlevnad. / This page supports data protection work; it does not certify GDPR compliance.</p>
+    <form id="policyForm">
+      <label>Personuppgiftsansvarig / Controller <input name="controller" required maxlength="2000"></label>
+      <label>Kontakt och rättighetsbegäran / Contact and rights requests <input name="contact" required maxlength="2000"></label>
+      <label>Ändamål, nödvändiga fält och hantering av profiler / Purpose, necessary fields and profile retention <textarea name="purpose" required maxlength="2000"></textarea></label>
+      <label>Beslutad rättslig grund, mottagare, integrationer och eventuella överföringar / Approved legal basis, recipients, integrations and transfers <textarea name="lawful_basis" required maxlength="2000"></textarea></label>
+      <label>Avslutad lånehistorik, dagar / Completed loan history, days <input name="loan_days" type="number" min="1" max="36500" required></label>
+      <label>Loggar, dagar / Logs, days <input name="event_days" type="number" min="1" max="36500" required></label>
+      <button type="submit">Spara beslutad policy / Save approved policy</button>
+    </form>
+    <h2>Registerunderlag och radering / Subject data and deletion</h2>
+    <p>Verifiera identitet och rättslig bedömning separat. Underlaget kan innehålla loggträffar om andra personer; granska före utlämnande. / Verify identity and legal grounds separately. Log matches may concern other people; review before disclosure.</p>
+    <label>Låntagar-ID / Borrower ID <input id="subjectId"></label>
+    <button id="exportSubject" type="button">Visa underlag / Show data for review</button>
+    <button id="previewErase" type="button">Förhandsgranska radering / Preview deletion</button>
+    <p>Inaktivering i Admin är inte radering. Radering här tar bort personens profil, avslutade lån, förfrågningar och kopplade konton i aktuell databas. Äldre matchande loggtexter maskeras. Säkerhetskopior, exporter, Git-historik och mejl omfattas inte. / Deactivation is not deletion. Deletion removes the profile, completed loans, requests and linked accounts from this database and redacts matching legacy log text. Backups, exports, Git history and emails are excluded.</p>
+    <label>Skriv DELETE efter granskning / Type DELETE after review <input id="eraseConfirmation" autocomplete="off"></label>
+    <button id="applyErase" type="button" disabled>Utför radering / Delete data</button>
+    <h2>Gallring / Retention</h2>
+    <p>Gallring körs manuellt enligt sparad policy och omfattar avslutade lån/förfrågningar och gamla loggar. Profiler och externa kopior hanteras separat. / Retention runs manually using the saved policy and covers completed loans/requests and old logs. Profiles and external copies are handled separately.</p>
+    <button id="previewRetention" type="button">Förhandsgranska / Preview</button>
+    <label>Skriv DELETE efter granskning / Type DELETE after review <input id="retentionConfirmation" autocomplete="off"></label>
+    <button id="applyRetention" type="button" disabled>Utför gallring / Apply retention</button>
+    <pre id="result" aria-live="polite"></pre>
+  </section>
+</main><script src="/js/privacy.js"></script></body></html>

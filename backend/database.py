@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -8,12 +9,12 @@ from typing import Any, Iterator
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT_DIR / "data"
-DATABASE_PATH = DATA_DIR / "inventory.db"
+DATABASE_PATH = Path(os.environ.get("LOAN_DATABASE_PATH", str(DATA_DIR / "inventory.db")))
 
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -28,6 +29,27 @@ def initialize_database() -> None:
     with connect() as db:
         db.executescript(
             """
+            CREATE TABLE IF NOT EXISTS access_accounts (
+                username TEXT PRIMARY KEY,
+                salt TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('operator','admin','superadmin')),
+                user_id TEXT,
+                revision INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY(user_id) REFERENCES users(user_id)
+            );
+            CREATE TABLE IF NOT EXISTS privacy_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS security_audit (
+                audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_time TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                user_id TEXT,
+                action TEXT NOT NULL,
+                status INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS objects (
                 object_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -96,6 +118,12 @@ def initialize_database() -> None:
                 message TEXT NOT NULL
             );
 
+            CREATE TRIGGER IF NOT EXISTS minimize_new_event_text
+            AFTER INSERT ON events WHEN NEW.event_type != 'privacy'
+            BEGIN
+                UPDATE events SET message = 'Händelse registrerad; personuppgifter utelämnas'
+                WHERE event_id = NEW.event_id;
+            END;
             CREATE TABLE IF NOT EXISTS loan_requests (
                 request_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -193,6 +221,7 @@ def initialize_database() -> None:
         request_columns = [column["name"] for column in db.execute("PRAGMA table_info(loan_requests)").fetchall()]
         missing_request_columns = {
             "pickup_ready_email_sent_at": "TEXT",
+            "request_group_id": "INTEGER",
         }
         for column_name, column_type in missing_request_columns.items():
             if column_name not in request_columns:
@@ -205,6 +234,30 @@ def initialize_database() -> None:
         for column_name, column_type in missing_group_columns.items():
             if column_name not in group_columns:
                 db.execute(f"ALTER TABLE user_groups ADD COLUMN {column_name} {column_type}")
+
+        legacy_new_job_message = (
+            "Ett nytt lånejobb har skapats.\n\n"
+            "Användare: {user_name}\n"
+            "Objekt: {object_name} ({object_id})\n"
+            "Antal: {quantity}\n"
+            "Utlåningsdatum: {lending_date}\n"
+            "Returdatum: {return_date}"
+        )
+        formatted_new_job_message = (
+            "NY LÅNEFÖRFRÅGAN\n\n"
+            "Förfrågan: #{request_id}\n"
+            "Användare: {user_name}\n"
+            "Utlåningsdatum: {lending_date}\n"
+            "Återlämningsdatum: {return_date}\n\n"
+            "ARTIKLAR ({article_count})\n"
+            "{object_list}\n\n"
+            "Totalt antal: {quantity}"
+        )
+        db.execute(
+            """UPDATE system_settings SET value = ?, updated_at = datetime('now', 'localtime')
+               WHERE key = 'message_new_job_body' AND trim(value) = ?""",
+            (formatted_new_job_message, legacy_new_job_message),
+        )
 
         status_replacements = (
             ("L?g niv?", "Låg nivå"),

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import re
+import os
 import smtplib
 import ssl
-import socket
-import time
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from typing import Any
@@ -36,7 +35,7 @@ SYSTEM_SETTING_DEFAULTS = {
     "smtp_username": "",
     "smtp_password": "",
     "smtp_from_address": "",
-    "smtp_use_tls": "0",
+    "smtp_use_tls": "1",
     "teams_enabled": "0",
     "teams_group_recipient": "group.id.a474985@volvo.com",
     "teams_subject_prefix": "TEAMS",
@@ -65,12 +64,14 @@ SYSTEM_SETTING_DEFAULTS = {
     "overdue_block_limit": "3",
     "message_new_job_subject": "Nytt lånejobb #{request_id}",
     "message_new_job_body": (
-        "Ett nytt lånejobb har skapats.\n\n"
+        "NY LÅNEFÖRFRÅGAN\n\n"
+        "Förfrågan: #{request_id}\n"
         "Användare: {user_name}\n"
-        "Objekt: {object_name} ({object_id})\n"
-        "Antal: {quantity}\n"
         "Utlåningsdatum: {lending_date}\n"
-        "Returdatum: {return_date}\n"
+        "Återlämningsdatum: {return_date}\n\n"
+        "ARTIKLAR ({article_count})\n"
+        "{object_list}\n\n"
+        "Totalt antal: {quantity}"
     ),
     "message_returned_loan_subject": "Lån återlämnat #{request_id}",
     "message_returned_loan_body": (
@@ -108,10 +109,22 @@ def get_system_settings() -> dict[str, str]:
     settings = SYSTEM_SETTING_DEFAULTS.copy()
     for item in rows("SELECT key, value FROM system_settings"):
         settings[item["key"]] = item["value"]
+    if "LOAN_SMTP_PASSWORD" in os.environ:
+        settings["smtp_password"] = os.environ["LOAN_SMTP_PASSWORD"]
     return settings
 
 
-def update_system_settings(payload: dict[str, Any]) -> dict[str, str]:
+def get_public_system_settings(settings: dict[str, str] | None = None) -> dict[str, str | bool]:
+    if settings is None:
+        settings = get_system_settings()
+    public_settings: dict[str, str | bool] = {
+        key: value for key, value in settings.items() if key != "smtp_password"
+    }
+    public_settings["smtp_password_configured"] = bool(settings.get("smtp_password", "").strip())
+    return public_settings
+
+
+def update_system_settings(payload: dict[str, Any]) -> dict[str, str | bool]:
     settings = get_system_settings()
     for key in SYSTEM_SETTING_DEFAULTS:
         value = payload.get(key, settings[key])
@@ -145,6 +158,8 @@ def update_system_settings(payload: dict[str, Any]) -> dict[str, str]:
     timestamp = now_text()
     with connect() as db:
         for key, value in settings.items():
+            if key == "smtp_password" and "LOAN_SMTP_PASSWORD" in os.environ:
+                continue
             db.execute(
                 """
                 INSERT INTO system_settings (key, value, updated_at)
@@ -157,7 +172,7 @@ def update_system_settings(payload: dict[str, Any]) -> dict[str, str]:
             "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
             (timestamp, "settings", "Systeminställningar uppdaterades"),
         )
-    return settings
+    return get_public_system_settings(settings)
 
 
 def parse_email_list(value: str) -> list[str]:
@@ -212,6 +227,8 @@ def teams_ready(settings: dict[str, str]) -> bool:
 
 
 def email_msg(subject: str, body: str, recipients: list[str], settings: dict[str, str] | None = None) -> int:
+    if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
+        raise ValueError("Externa notiser är spärrade. IT-godkänd konfiguration krävs innan LOAN_ENABLE_NOTIFICATIONS=1 sätts.")
     settings = settings or get_system_settings()
     original_recipients = [recipient for recipient in recipients if recipient]
     recipients = effective_recipients(original_recipients, settings)
@@ -219,6 +236,8 @@ def email_msg(subject: str, body: str, recipients: list[str], settings: dict[str
         return 0
     if not smtp_ready(settings):
         raise ValueError("SMTP är inte komplett konfigurerat.")
+    if settings.get("smtp_use_tls") != "1":
+        raise ValueError("TLS krävs för e-posttransport.")
 
     if simulation_enabled(settings):
         subject = f"[SIMULERING] {subject}"
@@ -250,47 +269,23 @@ def send_email(subject: str, body: str, recipients: list[str], settings: dict[st
 
 
 def raw_smtp_message(server: str, port: int, mail_from: str, rcpt_to: str, subject: str, body: str, ehlo_name: str) -> None:
-    with socket.create_connection((server, port), timeout=10) as connection:
-        reader = connection.makefile("rb")
-
-        def read_response(expected_codes: tuple[int, ...], command_name: str) -> None:
-            lines: list[str] = []
-            while True:
-                line = reader.readline()
-                if not line:
-                    raise ValueError(f"SMTP-servern stängde anslutningen vid {command_name}.")
-                text = line.decode("utf-8", errors="replace").rstrip("\r\n")
-                lines.append(text)
-                if len(text) < 4 or text[3:4] != "-":
-                    break
-            code_text = lines[-1][:3]
-            code = int(code_text) if code_text.isdigit() else 0
-            if code not in expected_codes:
-                raise ValueError(f"SMTP {command_name} misslyckades: {' | '.join(lines)}")
-
-        def send(command: str, expected_codes: tuple[int, ...] | None = None, command_name: str | None = None) -> None:
-            print(">>", command)
-            connection.sendall((command + "\r\n").encode("utf-8"))
-            time.sleep(0.5)
-            if expected_codes is not None:
-                read_response(expected_codes, command_name or command.split(" ", 1)[0])
-
-        read_response((220,), "anslutning")
-        send(f"EHLO {ehlo_name}", (250,), "EHLO")
-        send(f"MAIL FROM: <{mail_from}>", (250,), "MAIL FROM")
-        send(f"RCPT TO: <{rcpt_to}>", (250, 251), "RCPT TO")
-        send("DATA", (354,), "DATA")
-        send("Content-Type: text/plain; charset=UTF-8")
-        send("Content-Transfer-Encoding: 8bit")
-        send(f"Subject: {subject}")
-        send("")
-        for line in body.splitlines():
-            send(f".{line}" if line == "." else line)
-        send(".", (250,), "DATA avslut")
-        send("QUIT", (221,), "QUIT")
+    if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
+        raise ValueError("Externa notiser är spärrade.")
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = mail_from
+    message["To"] = rcpt_to
+    message.set_content(body)
+    with smtplib.SMTP(server, port, timeout=10) as smtp:
+        smtp.ehlo(ehlo_name)
+        smtp.starttls(context=ssl.create_default_context())
+        smtp.ehlo(ehlo_name)
+        smtp.send_message(message)
 
 
 def team_msg(subject: str, body: str, recipients: list[str], settings: dict[str, str] | None = None) -> int:
+    if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
+        raise ValueError("Externa notiser är spärrade. IT-godkänd konfiguration krävs innan LOAN_ENABLE_NOTIFICATIONS=1 sätts.")
     settings = settings or get_system_settings()
     original_recipients = [recipient for recipient in recipients if recipient]
     recipients = effective_recipients(original_recipients, settings)
@@ -300,14 +295,6 @@ def team_msg(subject: str, body: str, recipients: list[str], settings: dict[str,
     timestamp = now_text()
     is_simulation = simulation_enabled(settings)
     mode = "SIMULERING" if is_simulation else "TEAMS"
-    print("=" * 72)
-    print(f"{mode} TEAMS {timestamp}")
-    print(f"Ursprungliga mottagare: {', '.join(original_recipients) or '-'}")
-    print(f"Skickas/visas för: {', '.join(recipients)}")
-    print(f"Rubrik: {subject}")
-    print(body)
-    print("=" * 72)
-
     if not teams_ready(settings):
         raise ValueError("Teams är inte komplett konfigurerat.")
 
@@ -370,6 +357,8 @@ def send_loan_reminders() -> dict[str, int]:
         raise ValueError("Lånepåminnelser är inte aktiva.")
     if not smtp_ready(settings):
         raise ValueError("SMTP är inte komplett konfigurerat.")
+    if settings.get("smtp_use_tls") != "1":
+        raise ValueError("TLS krävs för e-posttransport.")
 
     reminder_days = int(settings.get("due_soon_days") or settings.get("loan_reminder_days") or "10")
     repeat_days = max(1, int(settings.get("overdue_repeat_days") or "3"))
@@ -443,6 +432,8 @@ def send_loan_reminder(loan_id: int) -> dict[str, Any]:
     settings = get_system_settings()
     if not smtp_ready(settings):
         raise ValueError("SMTP är inte komplett konfigurerat.")
+    if settings.get("smtp_use_tls") != "1":
+        raise ValueError("TLS krävs för e-posttransport.")
 
     loan = row(
         """

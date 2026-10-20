@@ -7,7 +7,19 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <div class="app-shell">
+    <section id="loginPanel" class="privacy-login">
+      <h1>Logga in / Sign in</h1>
+      <p>Lokalt prototypkonto / Local prototype account</p>
+      <form id="loginForm">
+        <label>Konto / Account <input id="loginUsername" autocomplete="username" required maxlength="80"></label>
+        <label>Lösenord / Password <input id="loginPassword" type="password" autocomplete="current-password" required maxlength="256"></label>
+        <button type="submit">Logga in / Sign in</button>
+      </form>
+      <p id="loginError" role="alert"></p>
+      <p>Första kontot skapas lokalt enligt README. / Create the first account locally as described in README.</p>
+      <details><summary>Personuppgifter / Personal data</summary><pre id="privacyNotice"></pre></details>
+    </section>
+    <div class="app-shell" hidden>
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">ELLAB</div>
@@ -33,6 +45,8 @@
       <main class="main">
         <header class="topbar">
           <div class="topbar-actions">
+            <a href="/privacy.html">Dataskydd / Privacy</a>
+            <button id="logoutButton" type="button">Logga ut / Sign out</button>
             <button class="search-open-button" id="openSearchButton" type="button">Sök</button>
             <div class="language-toggle" aria-label="Språk">
               <span class="language-label">Språk</span>
@@ -47,7 +61,7 @@
             </div>
             <label class="role-picker">
               Roll
-              <select id="roleSelect">
+              <select id="roleSelect" disabled>
                 <option value="operator">Operatör</option>
                 <option value="admin">Admin</option>
                 <option value="superadmin">System admin</option>
@@ -235,6 +249,11 @@
                 <select id="checkoutQuantity" data-number-select data-min="1" data-max="20" data-default="1"></select>
               </label>
             </div>
+            <div class="loan-cart-section">
+              <button class="primary-button" id="addLoanArticle" type="button">Lägg till artikel</button>
+              <h2 id="loanCartTitle">Artiklar i låneförfrågan</h2>
+              <div id="loanCart" aria-live="polite"></div>
+            </div>
             <div class="checkout-date-details">
               <label>
                 Lending date
@@ -268,6 +287,10 @@
               </thead>
               <tbody id="returnLoansBody"></tbody>
             </table>
+          </div>
+          <div class="checkout-submit-actions" id="returnBatchActions">
+            <button class="primary-button" id="returnSelectedButton" type="button" disabled>Lämna tillbaka valda</button>
+            <button class="secondary-button" id="returnAllButton" type="button" disabled>Lämna tillbaka allt för användaren</button>
           </div>
           <div class="empty-state" id="returnLoansEmpty">Sök på ditt namn för att se aktiva utlåningar.</div>
         </section>
@@ -527,11 +550,11 @@
                   </label>
                   <label>
                     Telefonnummer
-                    <input id="newUserPhone" placeholder="+46..." autocomplete="tel" inputmode="tel" pattern="[0-9+ ()-]+" required>
+                    <input id="newUserPhone" placeholder="+46..." autocomplete="tel" inputmode="tel" pattern="[0-9+ ()-]+">
                   </label>
                   <label>
                     Företag
-                    <input id="newUserCompany" placeholder="ELLAB" autocomplete="organization" required>
+                    <input id="newUserCompany" placeholder="ELLAB" autocomplete="organization">
                   </label>
                   <label>
                     Alias
@@ -850,7 +873,7 @@
                   </label>
                   <label>
                     Meddelande
-                    <textarea id="messageNewJobBody" rows="7"></textarea>
+                    <textarea id="messageNewJobBody" rows="12"></textarea>
                   </label>
                   <small>Variabler: {request_id}, {user_name}, {object_name}, {object_id}, {quantity}, {lending_date}, {return_date}</small>
                 </section>
@@ -1151,7 +1174,7 @@
             </label>
             <label>
               Telefonnummer
-              <input id="quickUserPhone" autocomplete="tel" inputmode="tel" pattern="[0-9+ ()-]+" required>
+              <input id="quickUserPhone" autocomplete="tel" inputmode="tel" pattern="[0-9+ ()-]+">
             </label>
             <label>
               Department name
@@ -1165,7 +1188,7 @@
             </label>
             <label>
               Företag
-              <input id="quickUserCompany" placeholder="ELLAB" autocomplete="organization" required>
+              <input id="quickUserCompany" placeholder="ELLAB" autocomplete="organization">
             </label>
             <label>
               Alias
@@ -1279,7 +1302,7 @@
         </div>
       </section>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/vendor/chart.umd.js"></script>
     <script src="/js/charts.js"></script>
     <script src="/js/translations.js"></script>
     <script src="/js/i18n.js"></script>
@@ -1288,6 +1311,7 @@
     <script src="/js/search.js"></script>
     <script src="/js/loan-views.js"></script>
     <script src="/js/actions.js"></script>
+    <script src="/js/session.js"></script>
     <script src="/js/app.js"></script>
   </body>
 </html>

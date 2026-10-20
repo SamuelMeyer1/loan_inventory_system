@@ -37,7 +37,7 @@ function renderStatusChart(state) {
 function renderJobStatusChart(state) {
   const ctx = document.getElementById("jobStatusChart");
   if (!ctx) return;
-  const labels = { requested: "Request", prepared: "Redo att hamta", loaned: "Lanad", returned: "Aterlamnad", stocked: "Lagerford" };
+  const labels = { requested: "Förfrågan", approved: "Godkänd", prepared: "Redo att hämta", loaned: "Lånad", returned: "Återlämnad", stocked: "Lagerförd" };
   const rows = chartRows(state, "job_status");
   resetChart(jobStatusChart);
   jobStatusChart = new Chart(ctx, {

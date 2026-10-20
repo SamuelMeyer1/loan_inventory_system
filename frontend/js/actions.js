@@ -41,6 +41,8 @@ function checkoutPayload(userId) {
 }
 
 function clearCheckoutForm() {
+  state.loanCart = [];
+  renderLoanCart();
   $("#checkoutObjectId").value = "";
   updateCheckoutInfo();
   $("#checkoutUser").value = "";
@@ -65,9 +67,11 @@ async function requestLoan() {
       showToast(t("toast.chooseUser"));
       return;
     }
+    if ($("#checkoutObjectId").value.trim()) addLoanArticle();
+    if (!state.loanCart.length) throw new Error(state.language === "en" ? "Add at least one article." : "Lägg till minst en artikel.");
     const data = await api("/api/loan-requests", {
       method: "POST",
-      body: JSON.stringify(checkoutPayload(userId)),
+      body: JSON.stringify({ ...checkoutPayload(userId), items: state.loanCart.map(({ object_id, quantity }) => ({ object_id, quantity })) }),
     });
     showToast(t("toast.requestCreated", { id: data.request_id }));
     clearCheckoutForm();
@@ -138,8 +142,23 @@ async function updateJobStatus(requestId, status) {
   }
 }
 
-async function markPickupCollected(requestId) {
-  await updateJobStatus(requestId, "loaned");
+async function updateJobGroupStatus(requestGroupId, status) {
+  try {
+    const data = await api("/api/loan-requests", {
+      method: "PUT",
+      body: JSON.stringify({ request_group_id: requestGroupId, status }),
+    });
+    showToast(state.language === "en"
+      ? `Request ${data.request_group_id} updated.`
+      : `Förfrågan ${data.request_group_id} uppdaterades.`);
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function markPickupCollected(requestGroupId) {
+  await updateJobGroupStatus(requestGroupId, "loaned");
 }
 
 async function deleteJob(requestId) {
@@ -541,7 +560,7 @@ async function readSmartcardUid() {
 
 function updateAutoUserCardScan() {
   const checkoutIsActive = $("#checkoutView")?.classList.contains("active");
-  if (checkoutIsActive) {
+  if (checkoutIsActive && state.role !== "operator") {
     startAutoUserCardScan();
   } else {
     stopAutoUserCardScan();
@@ -803,5 +822,25 @@ async function deleteObject(objectId) {
     await refreshAll();
   } catch (error) {
     showToast(error.message);
+  }
+}
+
+async function returnSelectedLoans(all = false) {
+  if (state.returnBusy) return;
+  const userId = $("#returnUser").value;
+  const loanIds = all ? state.loans.filter((loan) => loan.user_id === userId).map((loan) => loan.loan_id)
+    : [...document.querySelectorAll("[data-return-select]:checked")].map((input) => Number(input.dataset.returnSelect));
+  if (!userId || !loanIds.length) return;
+  state.returnBusy = true;
+  updateReturnButtons();
+  try {
+    await api("/api/return", { method: "POST", body: JSON.stringify({ user_id: userId, loan_ids: loanIds }) });
+    showToast(state.language === "en" ? "Selected articles returned." : "Valda artiklar är återlämnade.");
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.returnBusy = false;
+    updateReturnButtons();
   }
 }

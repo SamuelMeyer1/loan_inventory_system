@@ -1,3 +1,5 @@
-# The app itself only uses Python standard library modules.
-# This dependency is used by scripts/import_articles_excel.py for Excel imports.
+# Excel import.
 openpyxl
+
+# Smartcard/RFID reader support.
+pyscard

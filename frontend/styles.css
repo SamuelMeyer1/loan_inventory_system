@@ -3,6 +3,11 @@
    Andra farger, radier och standardmatt har.
    ============================================================ */
 
+[hidden] { display: none !important; }
+.privacy-login { max-width: 650px; margin: 3rem auto; padding: 2rem; }
+.privacy-login label { display: block; margin: 1rem 0; }
+.privacy-login pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 :root {
   --bg: #f5f7fa;
   --panel: #ffffff;
@@ -1306,9 +1311,10 @@ textarea {
 
 .jobs-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  grid-template-columns: repeat(6, minmax(230px, 1fr));
   gap: 14px;
   align-items: start;
+  overflow-x: auto;
 }
 
 .job-column {
@@ -2666,3 +2672,22 @@ tr.late {
     margin: 14mm;
   }
 }
+
+/* Multi-article loan requests. */
+.loan-cart-section { grid-column: 1 / -1; padding: 18px; border: 1px solid #cad5df; border-radius: 10px; }
+.loan-cart-section h2 { margin-top: 18px; font-size: 1.1rem; }
+.loan-cart-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid #dce3e9; }
+.loan-cart-row > span { flex: 1; min-width: 160px; }
+.loan-cart-row small, .request-reference { display: block; margin-top: 4px; color: #526477; }
+.loan-cart-row input { width: 90px; }
+.loan-cart-row > label { display: flex; align-items: center; gap: 10px; }
+.request-group { display: grid; gap: 10px; padding: 12px; border: 1px solid #cad5df; border-radius: 8px; background: white; cursor: grab; transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
+.request-group.dragging { opacity: 0.78; cursor: grabbing; transform: rotate(2deg) scale(1.01); box-shadow: 0 16px 30px rgba(23, 33, 43, 0.18); }
+.request-group > h3 { margin: 0; font-size: 15px; }
+.job-group-items { display: grid; gap: 10px; margin-top: 10px; }
+.job-group-item { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: #f8fafc; }
+.job-group-item span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.job-group-item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.job-group-item-actions button { min-height: 34px; padding: 6px 9px; }
+.job-partial-status { color: var(--warn-text); }
+[data-return-select] { width: 18px; height: 18px; vertical-align: middle; }

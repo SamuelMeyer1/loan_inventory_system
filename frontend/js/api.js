@@ -3,8 +3,9 @@ async function api(path, options = {}) {
   let response;
   try {
     response = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
       ...options,
+      headers: { "Content-Type": "application/json", "X-Loan-Client": "browser",
+        "X-CSRF-Token": window.loanSession?.csrf || "", ...(options.headers || {}) },
     });
   } catch (error) {
     throw new Error(t("error.network"));
@@ -14,6 +15,11 @@ async function api(path, options = {}) {
     throw new Error(t("error.backendJson"));
   }
 
+  if (response.status === 401 && window.loanSession) {
+    window.loanSession = null;
+    location.reload();
+    throw new Error("Sessionen har gått ut / Session expired");
+  }
   const payload = await response.json();
   if (!payload.ok) {
     throw new Error(payload.error || t("error.unknown"));

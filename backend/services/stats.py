@@ -17,7 +17,7 @@ def dashboard_stats() -> dict[str, int]:
         """
     )
     low_stock_count = row("SELECT COUNT(*) AS value FROM objects WHERE available_quantity <= min_quantity")
-    jobs_count = row("SELECT COUNT(*) AS value FROM loan_requests WHERE status IN ('requested', 'prepared', 'loaned', 'returned')")
+    jobs_count = row("SELECT COUNT(*) AS value FROM loan_requests WHERE status IN ('requested', 'approved', 'prepared', 'loaned', 'returned')")
     consumable_count = row("SELECT COUNT(*) AS value FROM consumable_reports WHERE status = 'open'")
     return {
         "objects": int(object_count["value"] if object_count else 0),

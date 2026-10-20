@@ -1,7 +1,7 @@
 # Uppdates
 
-Nuvarande version: V1.2.7
-Senast uppdaterad: 2026-06-03
+Nuvarande version: V1.6.0
+Senast uppdaterad: 2026-10-15
 
 Den har filen anvands som projektlogg. Vid varje update:
 
@@ -14,6 +14,73 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.6.0 - 2026-10-15
+
+- Lokala konton, serverbehörigheter, tidsbegränsade sessioner och CSRF-skydd ersätter simulerad rollväxling.
+- Operatörer ser egna uppgifter/lån. Systeminställningar och dataskyddsåtgärder skyddas på servern.
+- Registerunderlag, förhandsgranskad radering/gallring och konfigurerbar information om behandlingen.
+- Telefon/företag är frivilliga, nya användar-ID:n är slumpmässiga och nya loggtexter minimeras.
+- Inga live-uppgifter raderade. Lokal prototyp, inte intyg om GDPR-efterlevnad.
+- Verifierat: 40 Python-tester, två Node-sviter, syntax/kompilering. Visuell webbläsarkontroll kvarstår då testservern inte kunde nås via Browser Use.
+
+## V1.5.3 - 2026-10-01
+
+- SMTP-losenord skickas inte langre till webblasaren via systeminstallningarnas API.
+- Installningsvyn visar bara om ett losenord ar konfigurerat, och tomt falt behaller det sparade losenordet.
+- JSON-svar markeras med `Cache-Control: no-store`.
+
+## V1.5.2 - 2026-09-30
+
+- Uppdaterade Codex-projektminnet med kodkarta, arbetsflode och prioriterad strukturgranskning.
+- Kortade AGENTS.md och rattade information om tester, Node och beroenden.
+- Verifierat: 14 Python-tester och JavaScript-testet for lanekorg/aterlamning godkanda.
+- Dokumentationsandring; appkod och live-data har inte andrats av denna uppdatering.
+
+## V1.5.1 - 2026-09-14
+
+- Teams-notisen för nya låneförfrågningar har fått tydliga informationsblock.
+- Varje artikel visas på en egen punkt med antal och artikel-ID.
+- Den gamla standardmallen uppgraderas automatiskt; användarredigerade mallar lämnas orörda.
+
+## V1.5.0 - 2026-09-14
+
+- JOBB visar en samlad ruta per låneförfrågan i stället för en ruta per artikel.
+- Gemensamma knappar godkänner, förbereder, lånar ut, återlämnar och lagerför alla artiklar.
+- Ny status Godkänd mellan Förfrågan och Redo att hämta.
+- Artikelrader kan fortfarande öppnas och hanteras separat vid avvikelser.
+- Hämta-vyn visar en samlad förfrågan med knappen Allt hämtat.
+- Gruppändringar är atomiska: om en artikel inte kan lånas ut ändras ingen artikel eller lagersaldo.
+- Hämtningsmail omfattar samtliga artiklar i förfrågan.
+
+## V1.4.1 - 2026-09-14
+
+- Svenska datumetiketter: Utlåningsdatum och Återlämningsdatum.
+- Antal, antalsfält och Ta bort ligger på samma horisontella linje i artikellistan.
+- Verifierat HTTP-anrop med tre artiklar och tomt äldre objekt-ID-fält. Felet Ange objekt-ID kom från en serverprocess med den gamla koden.
+
+## V1.4.0 - 2026-09-14
+
+- Flera artiklar med eget antal kan samlas i samma låneförfrågan.
+- Gemensamt förfrågningsnummer visas i jobb, hämtning och återlämning; status följs per artikelrad.
+- Återlämning av valda artikelrader eller alla aktiva lån för den valda användaren.
+- Förfrågningar och återlämningar sparas i en transaktion, med skydd mot dubbel återlämning.
+- Befintliga databaser uppgraderas automatiskt vid start.
+- Verifierat med separata testdata och Python-/JavaScript-kontroller. Visuellt webbläsartest återstår eftersom ingen webbläsare var ansluten.
+
+## V1.3.0 - 2026-07-10
+
+Tillagt:
+
+- Windows 10-installationspaket med Python 3.12 och alla bibliotek.
+- Paketbyggare som valfritt tar med aktuell databas.
+- Automatisk startgenvag och skydd av befintlig databas vid ominstallation.
+- Helt offline-installation med Python och Windows-bibliotek inkluderade i paketet.
+
+Verifierat:
+
+- PowerShell-skripten klarar syntaxkontroll och paketets databas matchar originalet.
+- Backend kompilerar.
 
 ## V1.2.7 - 2026-06-03
 

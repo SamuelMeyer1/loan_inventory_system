@@ -1,6 +1,17 @@
 # Uppdateringar Vi Gjort
 
-Senast uppdaterad: 2026-05-27
+Senast uppdaterad: 2026-09-30
+
+## 2026-09-30 — Projektminne och kodgranskning
+
+- Kortade och rättade `AGENTS.md`; stödtexter läses efter uppgift.
+- Lade till `kodkarta.md`, `arbetsflode.md` och `forbattringar.md`.
+- Rättade uppgifterna om tester, Node och Python-beroenden.
+- Baslinje: 14 Python-tester samt Node-test för lånekorg/återlämning godkända.
+- Nästa föreslagna arbete: transaktioner vid direktuttag och publika inställningssvar.
+- Ingen appkod ändrad. Äldre anteckningar nedan är historik, inte aktuell datastatus.
+
+## Historik från 2026-05-27
 
 ## UI och arbetsfloden
 

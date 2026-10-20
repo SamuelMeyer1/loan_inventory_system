@@ -50,7 +50,7 @@ function renderReturnLoans() {
 
   body.innerHTML = matches.map((loan) => `
     <tr class="${loan.overdue ? "late" : ""}">
-      <td>${loan.loan_id}</td>
+      <td><input type="checkbox" data-return-select="${loan.loan_id}" aria-label="${escapeHtml((state.language === 'en' ? 'Return ' : 'Återlämna ') + loan.object_name)}"> ${loan.loan_id}${loan.request_group_id ? `<small class="request-reference">${state.language === "en" ? "Request" : "Förfrågan"} #${loan.request_group_id}</small>` : ""}</td>
       <td>${escapeHtml(loan.object_name)} (${escapeHtml(loan.object_id)})</td>
       <td>${escapeHtml(loan.user_name)}</td>
       <td>${escapeHtml(loan.user_department || "")}</td>
@@ -68,6 +68,8 @@ function renderReturnLoans() {
     button.addEventListener("click", () => returnItem(Number(button.dataset.returnLoan)));
   });
 
+  document.querySelectorAll("[data-return-select]").forEach((input) => input.addEventListener("change", updateReturnButtons));
+  updateReturnButtons();
   if (empty) {
     empty.textContent = selectedUserId
       ? matches.length
@@ -110,25 +112,32 @@ function renderPickupItems() {
   const matches = selectedUserId
     ? state.jobs.filter((job) => job.user_id === selectedUserId && job.status === "prepared")
     : [];
+  const groups = groupLoanRequestRows(matches);
 
-  body.innerHTML = matches.map((job) => `
+  body.innerHTML = groups.map((group) => {
+    const first = group.items[0];
+    const objects = group.items.map((job) =>
+      `${escapeHtml(job.object_name)} (${escapeHtml(job.object_id)}) × ${job.quantity}`
+    ).join("<br>");
+    return `
     <tr>
-      <td>${job.request_id}</td>
-      <td>${escapeHtml(job.object_name)} (${escapeHtml(job.object_id)})</td>
-      <td>${escapeHtml(job.user_name)}</td>
-      <td>${escapeHtml(job.user_department || "")}</td>
-      <td>${escapeHtml(job.engine_id || "")}</td>
-      <td>${escapeHtml(job.project_number || "")}</td>
-      <td>${job.quantity}</td>
-      <td>${escapeHtml(job.lending_date || "")}</td>
-      <td>${escapeHtml(job.return_date || "")}</td>
+      <td>${group.id}</td>
+      <td>${objects}</td>
+      <td>${escapeHtml(first.user_name)}</td>
+      <td>${escapeHtml(first.user_department || "")}</td>
+      <td>${escapeHtml(first.engine_id || "")}</td>
+      <td>${escapeHtml(first.project_number || "")}</td>
+      <td>${group.items.reduce((sum, job) => sum + Number(job.quantity), 0)}</td>
+      <td>${escapeHtml(first.lending_date || "")}</td>
+      <td>${escapeHtml(first.return_date || "")}</td>
       <td>${statusBadge("Aktiv")}</td>
-      <td><button class="primary-button table-return-button" type="button" data-pickup-job="${job.request_id}">Hämtat</button></td>
+      <td><button class="primary-button table-return-button" type="button" data-pickup-group="${group.id}">${state.language === "en" ? "Everything collected" : "Allt hämtat"}</button></td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
-  document.querySelectorAll("[data-pickup-job]").forEach((button) => {
-    button.addEventListener("click", () => markPickupCollected(Number(button.dataset.pickupJob)));
+  document.querySelectorAll("[data-pickup-group]").forEach((button) => {
+    button.addEventListener("click", () => markPickupCollected(Number(button.dataset.pickupGroup)));
   });
 
   if (empty) {
@@ -291,4 +300,75 @@ function printLoanReceipt(loanId) {
     </div>
   `;
   window.print();
+}
+
+function addLoanArticle() {
+  const term = $("#checkoutObjectId").value.trim().toLowerCase();
+  const selectedId = $("#checkoutObjectInstrumentId").value;
+  const selected = state.objects.find((object) => object.object_id === selectedId);
+  const item = selected && [selected.object_id.toLowerCase(), selected.name.toLowerCase()].includes(term)
+    ? selected : state.objects.find((object) => object.object_id.toLowerCase() === term || object.name.toLowerCase() === term);
+  if (!item) throw new Error(state.language === "en" ? "Select an article first." : "Välj en artikel först.");
+  if (isConsumableObject(item)) throw new Error(state.language === "en" ? "Consumables cannot be borrowed." : "Förbrukningsvaror kan inte lånas.");
+  const quantity = Number($("#checkoutQuantity").value);
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error(state.language === "en" ? "Enter a positive whole quantity." : "Ange ett positivt heltal.");
+  const existing = state.loanCart.find((entry) => entry.object_id === item.object_id);
+  if (existing) existing.quantity += quantity;
+  else state.loanCart.push({ object_id: item.object_id, name: item.name, quantity });
+  $("#checkoutObjectId").value = "";
+  $("#checkoutQuantity").value = "1";
+  $("#checkoutObjectSuggestions").classList.remove("visible");
+  updateCheckoutInfo();
+  renderLoanCart();
+  $("#checkoutObjectId").focus();
+}
+
+function renderLoanCart() {
+  const en = state.language === "en";
+  $("#addLoanArticle").textContent = en ? "Add article" : "Lägg till artikel";
+  $("#loanCartTitle").textContent = en ? "Articles in this request" : "Artiklar i låneförfrågan";
+  $("#loanCart").innerHTML = state.loanCart.length ? state.loanCart.map((item, index) => `
+    <div class="loan-cart-row"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.object_id)}</small></span>
+      <label>${en ? "Quantity" : "Antal"}<input type="number" min="1" step="1" value="${item.quantity}" data-cart-quantity="${index}"></label>
+      <button class="danger-button" type="button" data-cart-remove="${index}" aria-label="${escapeHtml((en ? 'Remove ' : 'Ta bort ') + item.name)}">${en ? "Remove" : "Ta bort"}</button>
+    </div>`).join("") : `<p>${en ? "Select an article and click Add article. Repeat to add more." : "Välj en artikel och tryck Lägg till artikel. Upprepa för att lägga till fler."}</p>`;
+  document.querySelectorAll("[data-cart-remove]").forEach((button) => button.addEventListener("click", () => {
+    state.loanCart.splice(Number(button.dataset.cartRemove), 1); renderLoanCart();
+  }));
+  document.querySelectorAll("[data-cart-quantity]").forEach((input) => input.addEventListener("change", () => {
+    const item = state.loanCart[Number(input.dataset.cartQuantity)];
+    const quantity = Number(input.value);
+    if (Number.isInteger(quantity) && quantity > 0) item.quantity = quantity;
+    else input.value = item.quantity;
+  }));
+}
+
+function updateReturnButtons() {
+  const selected = document.querySelectorAll("[data-return-select]:checked").length;
+  const hasLoans = state.loans.some((loan) => loan.user_id === $("#returnUser").value);
+  $("#returnSelectedButton").disabled = state.returnBusy || !selected;
+  $("#returnAllButton").disabled = state.returnBusy || !hasLoans;
+  $("#returnSelectedButton").textContent = `${state.language === "en" ? "Return selected" : "Lämna tillbaka valda"} (${selected})`;
+  $("#returnAllButton").textContent = state.language === "en" ? "Return everything for this user" : "Lämna tillbaka allt för användaren";
+}
+
+const JOB_REQUEST_STATUS_ORDER = ["requested", "approved", "prepared", "loaned", "returned", "stocked"];
+
+function groupLoanRequestRows(jobs) {
+  const groups = new Map();
+  jobs.forEach((job) => {
+    const id = Number(job.request_group_id || job.request_id);
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(job);
+  });
+  return [...groups].map(([id, items]) => {
+    const positions = items.map((item) => JOB_REQUEST_STATUS_ORDER.indexOf(item.status));
+    const position = Math.min(...positions.filter((value) => value >= 0));
+    return {
+      id,
+      items: items.sort((a, b) => Number(a.request_id) - Number(b.request_id)),
+      status: JOB_REQUEST_STATUS_ORDER[position] || items[0].status,
+      partial: new Set(items.map((item) => item.status)).size > 1,
+    };
+  });
 }

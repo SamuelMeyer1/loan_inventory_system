@@ -21,9 +21,11 @@ from backend.services.loans import (
     return_item,
     send_pickup_ready_email,
     update_loan_request_details,
+    update_loan_request_group_status,
     update_loan_request_status,
 )
 from backend.services.notifications import (
+    get_public_system_settings,
     get_system_settings,
     send_loan_reminder,
     send_loan_reminders,
@@ -58,6 +60,7 @@ __all__ = [
     "delete_loan_request",
     "delete_object",
     "get_system_settings",
+    "get_public_system_settings",
     "issue_item",
     "list_active_loans",
     "list_consumable_reports",
@@ -79,6 +82,7 @@ __all__ = [
     "send_teams_test_message",
     "statistics_data",
     "update_loan_request_status",
+    "update_loan_request_group_status",
     "update_loan_request_details",
     "update_object",
     "update_group",

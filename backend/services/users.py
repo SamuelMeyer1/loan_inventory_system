@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import uuid
 import re
 from typing import Any
 
@@ -156,20 +157,7 @@ def delete_group(group_id: int) -> dict[str, Any]:
 
 
 def make_user_id(first_name: str, last_name: str, alias: str, email: str) -> str:
-    if alias:
-        base = alias
-    elif email:
-        base = email.split("@")[0]
-    else:
-        base = f"{first_name}.{last_name}"
-    base = re.sub(r"[^a-zA-Z0-9]+", "-", base.strip().lower()).strip("-")
-    base = base or "user"
-    candidate = base
-    counter = 1
-    while row("SELECT user_id FROM users WHERE user_id = ?", (candidate,)):
-        counter += 1
-        candidate = f"{base}-{counter}"
-    return candidate
+    return "usr-" + uuid.uuid4().hex
 
 
 def make_alias() -> str:
@@ -195,12 +183,8 @@ def validate_user_fields(first_name: str, last_name: str, email: str, phone: str
         raise ValueError("Ange e-postadress.")
     if not EMAIL_PATTERN.fullmatch(email):
         raise ValueError("Ange en giltig e-postadress.")
-    if not phone:
-        raise ValueError("Ange telefonnummer.")
-    if not PHONE_PATTERN.fullmatch(phone):
+    if phone and not PHONE_PATTERN.fullmatch(phone):
         raise ValueError("Telefonnummer får bara innehålla siffror och telefontecken.")
-    if not company:
-        raise ValueError("Ange företag.")
     if role not in ("operator", "admin", "superadmin"):
         raise ValueError("Ogiltig roll.")
 

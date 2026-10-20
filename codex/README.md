@@ -1,20 +1,23 @@
-# Codex Project Memory
+# Projektminne för Codex
 
-Las den har mappen i borjan av en ny Codex-session nar anvandaren ber om det.
+Målet är att hitta rätt kod med så lite onödig inläsning som möjligt.
+`AGENTS.md` i projektroten är ingången; läs sedan bara det uppgiften kräver.
 
-## Filer
+| Fil | Läs när |
+| --- | --- |
+| [kodkarta.md](kodkarta.md) | Du behöver hitta filer och funktioner för ett arbetsflöde. |
+| [arbetsflode.md](arbetsflode.md) | Du vill formulera en uppgift eller välja verifiering. |
+| [paminnelser.md](paminnelser.md) | Du ändrar lån, saldo, notiser eller databas. |
+| [forbattringar.md](forbattringar.md) | Du planerar nästa förbättring eller omstrukturering. |
+| [uppdateringar.md](uppdateringar.md) | Du behöver äldre beslut eller sessionshistorik. |
 
-- `paminnelser.md` - korta regler, arbetsvanor och saker att inte glomma.
-- `uppdateringar.md` - sammanfattning av andringar vi har gjort nyligen.
+`uppdates` är projektets versionslogg. `docs/system-map.md` beskriver systemet
+utförligare. Kopiera inte deras fullständiga innehåll hit.
 
-## Snabbstart
+`codex/` är vanlig projektdokumentation och skiljer sig från `.codex/`.
+Förlita dig på hänvisningarna i rotens `AGENTS.md` för att hitta stödfilerna,
+inte på att alla filer i mappen automatiskt läses.
+Se [OpenAI:s dokumentation om AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
 
-- Projektet kors fran repo-roten med `python main.py`.
-- Appen oppnas pa `http://127.0.0.1:8000`.
-- Live-data ligger i `data/inventory.db`; ta inte bort eller ersatt den utan tydlig begaran.
-- Efter backend-andringar: kor `python -m compileall backend main.py`.
-- Node.js saknas i miljon, sa `node --check` gar normalt inte att kora.
-
-## Viktigt
-
-`uppdates` ar fortfarande den formella projektloggen. Den har `codex`-mappen ar mer som arbetsminne mellan sessioner.
+Underhåll: rätta ändrade fakta, använd funktionsnamn som sökankare och håll
+historik utanför startinstruktionerna. Exakt tokenbesparing är inte uppmätt.

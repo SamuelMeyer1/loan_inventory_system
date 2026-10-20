@@ -8,6 +8,25 @@ Backend använder endast Python standardbibliotek:
 - `sqlite3` för databas
 - `json` för API-svar
 
+## Dataskydd och inloggning (V1.6.0)
+
+Prototypen har nu lokala inloggningskonton och serverkontrollerade behörigheter.
+Den är avsedd för lokal utveckling med fiktiva uppgifter; tekniskt stöd är inte
+en garanti om GDPR-efterlevnad eller ett godkännande för företagsdrift.
+
+Första gången: säkerhetskopiera enligt godkänd rutin och skapa ett konto från
+projektroten. Lösenordet anges dolt i terminalen, minst 15 tecken:
+
+```powershell
+python -B -m backend.manage_access ditt-kontonamn --role superadmin
+```
+
+Läs [dataskydd och drift](docs/dataskydd.md) för operatörskonton, registerunderlag,
+gallring, radering och kvarstående beslut. **Dataskydd / Privacy** i appen visar
+behandlingsinformation och ger superadmin förhandsgranskning av åtgärder.
+Inga konton eller gallringstider läggs in automatiskt. Externa notiser är spärrade
+som standard. Nätverksbindning stöds inte av denna lokala prototyp.
+
 ## Starta
 
 ```powershell
@@ -84,11 +103,15 @@ Importen skapar backup i `data/`, sparar alla originalkolumner i `old_inventory_
 
 ## Roller i prototypen
 
-Rollväljaren i toppbaren simulerar framtida login:
+Rollväljaren visar det inloggade kontots roll och kan inte ändras. Servern
+kontrollerar varje API-anrop. Profilens rollfält skapar inte ett inloggningskonto.
 
-- **Operatör** är standard och fokuserar på att låna, lämna tillbaka och checka ut förbrukningsartiklar.
-- **Admin** kan skapa, redigera och ta bort objekt samt se admin/logg-vyer.
-- **SuperAdmin** har Admins vyer plus System-vyn för Modbus/PLC, SMTP och generella notifikationer.
+- **Operatör:** egna uppgifter/lån, låneförfrågningar, hämtning av egna förberedda
+  lån, återlämning av egna valda lån och rapportering av slut på förbrukningsvara.
+- **Admin:** lager, användare och lånehantering.
+- **Superadmin:** dessutom fullständiga systeminställningar, loggar och dataskydd.
+
+Se `python -B -m backend.manage_access --help` och [dataskyddsrutinen](docs/dataskydd.md).
 
 ## Struktur
 

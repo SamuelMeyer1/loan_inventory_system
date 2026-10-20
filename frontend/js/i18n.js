@@ -49,6 +49,8 @@ function setHeaderTexts(selector, keys) {
 }
 
 function applyTranslations() {
+  renderLoanCart();
+  updateReturnButtons();
   document.documentElement.lang = state.language;
   const languageToggle = document.querySelector(".language-toggle");
   if (languageToggle) languageToggle.setAttribute("aria-label", t("topbar.language"));

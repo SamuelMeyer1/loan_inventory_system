@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -9,23 +10,24 @@ from urllib.parse import parse_qs, urlparse
 from backend.database import initialize_database
 from backend.seed_data import seed_database
 from backend import services
+from backend.http_access import AccessMixin
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
 
-class AppHandler(BaseHTTPRequestHandler):
+class AppHandler(AccessMixin, BaseHTTPRequestHandler):
     server_version = "LoanInventoryHTTP/1.0"
 
-    def do_GET(self) -> None:
+    def _do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/"):
             self.handle_api_get(parsed.path, parse_qs(parsed.query))
             return
         self.serve_static(parsed.path)
 
-    def do_POST(self) -> None:
+    def _do_POST(self) -> None:
         parsed = urlparse(self.path)
         if not parsed.path.startswith("/api/"):
             self.send_error(404)
@@ -70,9 +72,9 @@ class AppHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json({"ok": False, "error": str(error)}, status=400)
         except Exception as error:
-            self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+            self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
 
-    def do_DELETE(self) -> None:
+    def _do_DELETE(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path not in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests"):
             self.send_error(404)
@@ -95,18 +97,22 @@ class AppHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json({"ok": False, "error": str(error)}, status=400)
         except Exception as error:
-            self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+            self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
 
-    def do_PUT(self) -> None:
+    def _do_PUT(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/loan-requests":
             try:
                 payload = self.read_json()
-                self.send_json({"ok": True, "data": services.update_loan_request_status(payload)})
+                if payload.get("request_group_id"):
+                    data = services.update_loan_request_group_status(payload)
+                else:
+                    data = services.update_loan_request_status(payload)
+                self.send_json({"ok": True, "data": data})
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
-                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+                self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
             return
         if parsed.path == "/api/loan-requests/details":
             try:
@@ -115,7 +121,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
-                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+                self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
             return
         if parsed.path == "/api/consumable-reports":
             try:
@@ -124,7 +130,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
-                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+                self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
             return
         if parsed.path == "/api/system-settings":
             try:
@@ -133,7 +139,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
-                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+                self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
             return
         if parsed.path == "/api/users":
             try:
@@ -142,7 +148,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
-                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+                self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
             return
         if parsed.path == "/api/groups":
             try:
@@ -151,7 +157,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except ValueError as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
             except Exception as error:
-                self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+                self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
             return
 
         if parsed.path != "/api/objects":
@@ -164,7 +170,7 @@ class AppHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json({"ok": False, "error": str(error)}, status=400)
         except Exception as error:
-            self.send_json({"ok": False, "error": f"Serverfel: {error}"}, status=500)
+            self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
 
     def handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
         if path == "/api/stats":
@@ -201,7 +207,7 @@ class AppHandler(BaseHTTPRequestHandler):
             limit = int(query.get("limit", ["100"])[0])
             self.send_json({"ok": True, "data": services.recent_events(limit)})
         elif path == "/api/system-settings":
-            self.send_json({"ok": True, "data": services.get_system_settings()})
+            self.send_json({"ok": True, "data": services.get_public_system_settings()})
         else:
             self.send_error(404)
 
@@ -226,26 +232,43 @@ class AppHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def read_json(self) -> dict:
+        if hasattr(self, "json_payload"):
+            return self.json_payload
+        if self.headers.get("Transfer-Encoding"):
+            raise ValueError("Transfer-Encoding stöds inte.")
         length = int(self.headers.get("Content-Length", "0"))
-        if length == 0:
-            return {}
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        if not 0 <= length <= 4 * 1024 * 1024:
+            raise ValueError("Begäran är för stor.")
+        if length and self.headers.get_content_type() != "application/json":
+            raise ValueError("Använd application/json.")
+        payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        if not isinstance(payload, dict):
+            raise ValueError("JSON måste vara ett objekt.")
+        self.json_payload = payload
+        return payload
 
     def send_json(self, payload: dict, status: int = 200) -> None:
+        payload = self.filter_response(payload)
+        self.response_status = status
+        self.record_audit(status)
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
     def log_message(self, format: str, *args) -> None:
-        print(f"{self.address_string()} - {format % args}")
+        pass  # Do not write IP addresses, query strings or submitted identifiers to stdout.
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8000) -> None:
+    if host not in ("127.0.0.1", "localhost"):
+        raise ValueError("Prototypen får endast bindas till loopback. Nätverksdrift kräver IT-granskad HTTPS/SSO-lösning.")
     initialize_database()
-    seed_database()
+    if os.environ.get("LOAN_SEED_DEMO") == "1":
+        seed_database()
     server = ThreadingHTTPServer((host, port), AppHandler)
     print(f"Loan Inventory System running at http://{host}:{port}")
     print("Press Ctrl+C to stop.")

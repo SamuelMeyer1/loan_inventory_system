@@ -1,0 +1,188 @@
+[
+  {
+    "check": "Python source parsing",
+    "result": "PASS"
+  },
+  {
+    "check": "Checkout + return + duplicate return",
+    "result": {
+      "after_checkout": {
+        "total_quantity": 2,
+        "available_quantity": 1,
+        "active_quantity": 1
+      },
+      "after_return": {
+        "total_quantity": 2,
+        "available_quantity": 2,
+        "active_quantity": 0
+      },
+      "duplicate_return": {
+        "exception": "ValueError",
+        "message": "Inget aktivt lån hittades."
+      }
+    }
+  },
+  {
+    "check": "Insufficient and negative quantity",
+    "result": {
+      "excess": {
+        "exception": "ValueError",
+        "message": "Det finns inte tillräckligt antal tillgängligt."
+      },
+      "negative": {
+        "exception": "ValueError",
+        "message": "Antal måste vara större än 0."
+      },
+      "stock": {
+        "total_quantity": 1,
+        "available_quantity": 1,
+        "active_quantity": 0
+      }
+    }
+  },
+  {
+    "check": "Inactive borrower",
+    "result": {
+      "exception": "ValueError",
+      "message": "Användaren hittades inte."
+    }
+  },
+  {
+    "check": "Concurrent checkout of last item",
+    "result": {
+      "requests": [
+        {
+          "accepted": {
+            "loan_id": 1
+          }
+        },
+        {
+          "accepted": {
+            "loan_id": 2
+          }
+        }
+      ],
+      "stock": {
+        "total_quantity": 1,
+        "available_quantity": 0,
+        "active_quantity": 2
+      }
+    }
+  },
+  {
+    "check": "Concurrent return of same loan",
+    "result": {
+      "requests": [
+        {
+          "accepted": {
+            "loan_id": 1
+          }
+        },
+        {
+          "accepted": {
+            "loan_id": 1
+          }
+        }
+      ],
+      "stock": {
+        "total_quantity": 1,
+        "available_quantity": 2,
+        "active_quantity": 0
+      }
+    }
+  },
+  {
+    "check": "Numeric object code return",
+    "result": {
+      "loan": {
+        "loan_id": 1
+      },
+      "return_by_object_code": {
+        "exception": "ValueError",
+        "message": "Inget aktivt lån hittades."
+      }
+    }
+  },
+  {
+    "check": "Ambiguous object code return",
+    "result": {
+      "loans": [
+        {
+          "loan_id": 1
+        },
+        {
+          "loan_id": 2
+        }
+      ],
+      "returned_without_selection": {
+        "loan_id": 1
+      }
+    }
+  },
+  {
+    "check": "ISO offset dates accepted then list crashes",
+    "result": {
+      "saved": {
+        "loan_id": 1
+      },
+      "list_loans": {
+        "exception": "TypeError",
+        "message": "can't compare offset-naive and offset-aware datetimes"
+      }
+    }
+  },
+  {
+    "check": "Return time before checkout on same day",
+    "result": {
+      "accepted": {
+        "loan_id": 1
+      }
+    }
+  },
+  {
+    "check": "Stock edit while loan active",
+    "result": {
+      "total_quantity": 1,
+      "available_quantity": 2,
+      "active_quantity": 0
+    }
+  },
+  {
+    "check": "Returning unfulfilled request returns unrelated loan",
+    "result": {
+      "unrelated_loan": {
+        "loan_id": 1,
+        "status": "returned"
+      },
+      "stock": {
+        "total_quantity": 2,
+        "available_quantity": 2,
+        "active_quantity": 0
+      }
+    }
+  },
+  {
+    "check": "Fractional quantity",
+    "result": {
+      "response": {
+        "loan_id": 1
+      },
+      "stored_quantity": {
+        "quantity": 1
+      }
+    }
+  },
+  {
+    "check": "Delete object with outstanding request",
+    "result": {
+      "exception": "IntegrityError",
+      "message": "FOREIGN KEY constraint failed"
+    }
+  },
+  {
+    "check": "Secret setting exposed in service/API response",
+    "result": {
+      "sentinel_exposed_by_get_system_settings": true
+    }
+  }
+]
