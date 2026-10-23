@@ -7,17 +7,34 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <section id="loginPanel" class="privacy-login">
-      <h1>Logga in / Sign in</h1>
-      <p>Lokalt prototypkonto / Local prototype account</p>
-      <form id="loginForm">
-        <label>Konto / Account <input id="loginUsername" autocomplete="username" required maxlength="80"></label>
-        <label>Lösenord / Password <input id="loginPassword" type="password" autocomplete="current-password" required maxlength="256"></label>
-        <button type="submit">Logga in / Sign in</button>
-      </form>
-      <p id="loginError" role="alert"></p>
-      <p>Första kontot skapas lokalt enligt README. / Create the first account locally as described in README.</p>
-      <details><summary>Personuppgifter / Personal data</summary><pre id="privacyNotice"></pre></details>
+    <section id="loginPanel" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <div class="login-card">
+        <button id="loginCloseButton" class="login-close-button" type="button" aria-label="Stäng inloggning" hidden>&times;</button>
+        <div class="login-brand">
+          <span class="login-brand-mark">ELLAB</span>
+          <span class="login-brand-name">Inventory</span>
+        </div>
+        <p class="login-eyebrow">ADMINISTRATÖR</p>
+        <h1 id="loginTitle">Välkommen tillbaka</h1>
+        <p class="login-intro">Logga in för att öppna administrationsläget.</p>
+        <p id="loginSimulationBadge" class="simulation-badge" hidden>Simulering — endast testdata, inga externa utskick</p>
+        <form id="loginForm">
+          <label for="loginUsername">Konto</label>
+          <input id="loginUsername" autocomplete="username" required maxlength="80" placeholder="Ditt användarnamn">
+          <label for="loginPassword">Lösenord</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" required maxlength="256" placeholder="Ditt lösenord">
+          <button class="login-submit-button" type="submit">Logga in <span aria-hidden="true">&rarr;</span></button>
+        </form>
+        <p id="loginError" role="alert" aria-live="polite"></p>
+        <p class="login-help">Administratörskonto skapas lokalt av systemansvarig.</p>
+        <details class="login-privacy">
+          <summary>Dataskydd och personuppgifter</summary>
+          <div id="privacyNotice" class="privacy-notice"></div>
+          <p class="privacy-contact-inline">Frågor? Kontakta Olof Samuelsson: <a href="mailto:olof.samuelsson@volvo.com">olof.samuelsson@volvo.com</a></p>
+          <a href="/privacy.html">Läs mer om dataskydd / Privacy information</a>
+        </details>
+        <span class="login-version">Version 1.13.1</span>
+      </div>
     </section>
     <div class="app-shell" hidden>
       <aside class="sidebar">
@@ -45,8 +62,7 @@
       <main class="main">
         <header class="topbar">
           <div class="topbar-actions">
-            <a href="/privacy.html">Dataskydd / Privacy</a>
-            <button id="logoutButton" type="button">Logga ut / Sign out</button>
+            <span id="simulationBadge" class="simulation-badge" hidden>Simulering — endast testdata, inga externa utskick</span>
             <button class="search-open-button" id="openSearchButton" type="button">Sök</button>
             <div class="language-toggle" aria-label="Språk">
               <span class="language-label">Språk</span>
@@ -59,14 +75,16 @@
                 <span class="language-name">English</span>
               </button>
             </div>
-            <label class="role-picker">
-              Roll
-              <select id="roleSelect" disabled>
-                <option value="operator">Operatör</option>
-                <option value="admin">Admin</option>
-                <option value="superadmin">System admin</option>
-              </select>
-            </label>
+            <div class="account-access" aria-label="Inloggningsstatus">
+              <strong id="accountRole" class="account-role">Operatör</strong>
+              <button id="logoutButton" class="secondary-button" type="button" hidden>Logga ut</button>
+              <button id="adminLoginButton" class="secondary-button" type="button" hidden>Logga in</button>
+            </div>
+            <select id="roleSelect" hidden disabled aria-hidden="true">
+              <option value="operator">Operatör</option>
+              <option value="admin">Admin</option>
+              <option value="superadmin">System admin</option>
+            </select>
           </div>
         </header>
 
@@ -272,6 +290,7 @@
 
         <section class="view" id="returnView">
           <h1>Lämna tillbaka</h1>
+          <p id="returnInstructions">Välj låntagare och markera artiklar. Ange antal som lämnas tillbaka och eventuella skador.</p>
           <div class="filters return-filters">
             <label class="suggestion-field">
               Sök användare
@@ -283,7 +302,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Lån-ID</th><th>Objekt</th><th>Borrower</th><th>Dept no</th><th>Engine ID</th><th>Project no</th><th>Antal</th><th>Lending date</th><th>Return date</th><th>Status</th><th></th></tr>
+                <tr><th>Lån-ID</th><th>Objekt</th><th>Kvar att lämna</th><th>Lämnas nu</th><th>Varav skadade</th><th>Beskriv skadan</th><th>Returdatum</th></tr>
               </thead>
               <tbody id="returnLoansBody"></tbody>
             </table>
@@ -293,6 +312,7 @@
             <button class="secondary-button" id="returnAllButton" type="button" disabled>Lämna tillbaka allt för användaren</button>
           </div>
           <div class="empty-state" id="returnLoansEmpty">Sök på ditt namn för att se aktiva utlåningar.</div>
+          <div id="returnSummary" class="return-summary" role="status" aria-live="polite"></div>
         </section>
 
         <section class="view" id="pickupView">
@@ -417,11 +437,17 @@
               <button class="admin-settings-nav-button active" type="button" data-admin-section="settings">Inställningar</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="add-object">Lägg till objekt</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="objects">Hantera objekt</button>
+              <button class="admin-settings-nav-button" type="button" data-admin-section="damage" id="damageNav">Skador / karantän</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="create-user">Lägg till användare</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="users">Hantera användare</button>
               <button class="admin-settings-nav-button" type="button" data-admin-section="groups">Grupper</button>
             </aside>
             <div class="admin-settings-content">
+            <section class="admin-card admin-settings-panel" data-admin-panel="damage">
+              <h2 id="damageTitle">Skador / karantän</h2>
+              <p id="damageInstructions">Skadade returer kan inte lånas. Reparera och återför till lager eller kassera och minska totalt antal.</p>
+              <div id="damagedReturnsList"></div>
+            </section>
             <form class="admin-card admin-settings-panel" id="addObjectForm" data-admin-panel="add-object">
               <h2 id="objectFormTitle">Lägg till objekt</h2>
               <div class="admin-form-grid">
@@ -583,6 +609,13 @@
                     Aktiv användare
                   </label>
                 </div>
+                <section class="profile-data-acknowledgement" id="newUserPrivacyAcknowledgement">
+                  <label class="profile-data-acknowledgement-check">
+                    <input id="newUserPrivacyAcknowledged" type="checkbox" required>
+                    <span id="newUserPrivacyText">Jag har läst dataskyddsinformationen.</span>
+                  </label>
+                  <a id="newUserPrivacyLink" href="/privacy.html" target="_blank" rel="noopener">Läs dataskyddsinformationen</a>
+                </section>
                 <div class="form-actions">
                   <button class="secondary-button" id="cancelUserEditButton" type="button">Avbryt</button>
                   <button class="primary-button" id="saveUserButton" type="submit">Skapa användare</button>
@@ -1195,6 +1228,13 @@
               <input id="quickUserAlias" placeholder="Fritt alias" autocomplete="off">
             </label>
           </div>
+          <section class="profile-data-acknowledgement" id="quickUserPrivacyAcknowledgement">
+            <label class="profile-data-acknowledgement-check">
+              <input id="quickUserPrivacyAcknowledged" type="checkbox" required>
+              <span id="quickUserPrivacyText">Jag har läst dataskyddsinformationen.</span>
+            </label>
+            <a id="quickUserPrivacyLink" href="/privacy.html" target="_blank" rel="noopener">Läs dataskyddsinformationen</a>
+          </section>
           <button class="primary-button" type="submit">Skapa och välj användare</button>
         </form>
       </section>

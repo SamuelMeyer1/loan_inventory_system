@@ -10,7 +10,7 @@ if (Test-Path -LiteralPath $OutputDir) {
 }
 New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
 
-$items = @("backend", "frontend", "scripts", "docs", "main.py", "requirements.txt", "README.md")
+$items = @("backend", "frontend", "scripts", "docs", "main.py", "launcher.py", "requirements.txt", "README.md")
 foreach ($item in $items) {
     Copy-Item -LiteralPath (Join-Path $ProjectDir $item) -Destination $AppDir -Recurse -Force
 }

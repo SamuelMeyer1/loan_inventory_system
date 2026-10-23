@@ -49,6 +49,12 @@ function setHeaderTexts(selector, keys) {
 }
 
 function applyTranslations() {
+  ["newUser", "quickUser"].forEach((prefix) => {
+    setText(`#${prefix}PrivacyText`, "privacy.acknowledge");
+    setText(`#${prefix}PrivacyLink`, "privacy.read");
+  });
+  setText("#simulationBadge", "runtime.simulation");
+  setText("#loginSimulationBadge", "runtime.simulation");
   renderLoanCart();
   updateReturnButtons();
   document.documentElement.lang = state.language;
@@ -172,6 +178,14 @@ function applyTranslations() {
   ].forEach(([id, key]) => setLabel(id, key));
 
   setText("#returnView h1", "nav.return");
+  setText("#returnInstructions", "return.instructions");
+  setLabel("returnUserSearch", "checkout.searchUser");
+  setHeaderTexts("#returnView table", ["table.loanId", "table.object", "return.remaining", "return.quantity", "return.damaged", "return.description", "field.returnDate"]);
+  setText("#damageNav", "damage.title");
+  setText("#damageTitle", "damage.title");
+  setText("#damageInstructions", "damage.instructions");
+  renderReturnSummary();
+  renderDamagedReturns();
   setPlaceholder("#returnUserSearch", "checkout.searchUser");
   setText("#pickupView h1", "nav.pickup");
   setLabel("pickupUserSearch", "checkout.searchUser");

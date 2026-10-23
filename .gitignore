@@ -12,3 +12,6 @@ data/**/*.log
 .venv/
 venv/
 node_modules/
+build/
+dist/
+windows-installation/version-info.txt

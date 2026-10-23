@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 import os
 import mimetypes
+import ipaddress
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from backend.database import initialize_database
+from backend.database import initialize_database, row
+from backend import database
 from backend.seed_data import seed_database
 from backend import services
 from backend.http_access import AccessMixin
+from backend.security import initialize_local_test_accounts
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -19,6 +23,20 @@ FRONTEND_DIR = ROOT_DIR / "frontend"
 
 class AppHandler(AccessMixin, BaseHTTPRequestHandler):
     server_version = "LoanInventoryHTTP/1.0"
+
+    def dispatch(self, method):
+        started = time.perf_counter()
+        self.response_status = "-"
+        try:
+            super().dispatch(method)
+        finally:
+            if os.environ.get("LOAN_SERVER_DIAGNOSTICS") == "1":
+                elapsed = (time.perf_counter() - started) * 1000
+                print(f"[HTTP] {method} {self.response_status} {elapsed:.1f} ms", flush=True)
+
+    def log_request(self, code="-", size="-"):
+        # Exclude URLs, headers, IP addresses and payloads from diagnostics.
+        self.response_status = code
 
     def _do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -41,6 +59,8 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "data": services.issue_item(payload)})
             elif parsed.path == "/api/return":
                 self.send_json({"ok": True, "data": services.return_item(payload)})
+            elif parsed.path == "/api/damaged-returns/resolve":
+                self.send_json({"ok": True, "data": services.resolve_damaged_return(payload)})
             elif parsed.path == "/api/objects":
                 self.send_json({"ok": True, "data": services.add_object(payload)})
             elif parsed.path == "/api/users":
@@ -173,6 +193,9 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
             self.send_json({"ok": False, "error": "Ett internt fel inträffade."}, status=500)
 
     def handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
+        if path == "/api/damaged-returns":
+            self.send_json({"ok": True, "data": services.list_damaged_returns()})
+            return
         if path == "/api/stats":
             self.send_json({"ok": True, "data": services.dashboard_stats()})
         elif path == "/api/statistics":
@@ -263,16 +286,63 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
         pass  # Do not write IP addresses, query strings or submitted identifiers to stdout.
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8000) -> None:
-    if host not in ("127.0.0.1", "localhost"):
-        raise ValueError("Prototypen får endast bindas till loopback. Nätverksdrift kräver IT-granskad HTTPS/SSO-lösning.")
-    initialize_database()
-    if os.environ.get("LOAN_SEED_DEMO") == "1":
-        seed_database()
-    server = ThreadingHTTPServer((host, port), AppHandler)
-    print(f"Loan Inventory System running at http://{host}:{port}")
-    print("Press Ctrl+C to stop.")
+def _validated_bind_host(host: str | None) -> str:
+    if host is None:
+        host = os.environ.get("LOAN_HOST", "127.0.0.1")
+    if host in ("127.0.0.1", "localhost"):
+        return host
+    if os.environ.get("LOAN_ALLOW_LAN") != "1":
+        raise ValueError("LAN-test kräver uttryckligt val: sätt LOAN_ALLOW_LAN=1.")
     try:
+        address = ipaddress.ip_address(host)
+    except ValueError as error:
+        raise ValueError("LOAN_HOST måste vara en privat IPv4-adress för LAN-test.") from error
+    lan_networks = (
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+    )
+    if not isinstance(address, ipaddress.IPv4Address) or not any(address in network for network in lan_networks):
+        raise ValueError("LAN-test får endast bindas till en privat IPv4-adress, inte 0.0.0.0 eller en publik adress.")
+    return host
+
+
+def run_server(host: str | None = None, port: int = 8000) -> None:
+    host = _validated_bind_host(host)
+    simulation = os.environ.get("LOAN_SIMULATION") == "1"
+    if simulation and host not in ("127.0.0.1", "localhost"):
+        raise ValueError("Simulering får endast köras lokalt.")
+    if simulation:
+        simulation_path = database.DATABASE_PATH.resolve()
+        if (not os.environ.get("LOAN_DATABASE_PATH")
+                or simulation_path == (ROOT_DIR / "data" / "inventory.db").resolve()
+                or not simulation_path.is_file()
+                or simulation_path.stat().st_size != 0):
+            raise ValueError("Simulering kräver en ny tom separat databas från startfönstret.")
+    anonymous_operator = host not in ("127.0.0.1", "localhost")
+    fixed_test_credentials = os.environ.get("LOAN_LOCAL_FIXED_TEST_CREDENTIALS") == "1"
+    if fixed_test_credentials and anonymous_operator:
+        raise ValueError("Fasta lokala testinloggningar får inte användas i LAN-läge.")
+    server = ThreadingHTTPServer((host, port), AppHandler)
+    try:
+        initialize_database()
+        if anonymous_operator and row("SELECT username FROM local_test_accounts LIMIT 1"):
+            raise ValueError("Databasen innehåller låsta lokala testkonton och får inte användas i LAN-läge.")
+        if fixed_test_credentials:
+            initialize_local_test_accounts()
+        if os.environ.get("LOAN_SEED_DEMO") == "1":
+            seed_database()
+        server.allowed_hosts = {f"{host}:{server.server_port}"}
+        if host in ("127.0.0.1", "localhost"):
+            server.allowed_hosts |= {f"127.0.0.1:{server.server_port}", f"localhost:{server.server_port}"}
+            if server.server_port == 80:
+                server.allowed_hosts |= {"localhost", "127.0.0.1"}
+        server.anonymous_operator = anonymous_operator
+        server.local_operator = host in ("127.0.0.1", "localhost")
+        server.simulation = simulation
+        server.instance_id = os.environ.get("LOAN_INSTANCE_ID", "")
+        print(f"Loan Inventory System running at http://{host}:{server.server_port}", flush=True)
+        print("Press Ctrl+C to stop.")
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping server.")

@@ -30,15 +30,15 @@ async function act(task) {
 async function initPrivacy() {
   const policy = await privacyApi("/api/privacy/notice");
   element("notice").textContent = policy.configured
-    ? `${policy.controller}\n${policy.contact}\n${policy.purpose}\n${policy.lawful_basis}\nAvslutad lånehistorik / Completed loan history: ${policy.loan_days} dagar / days\nLoggar / Logs: ${policy.event_days} dagar / days`
-    : "Ej konfigurerad – endast fiktiva uppgifter tills verksamheten har beslutat om hanteringen. / Not configured – use fictitious data until the organisation has approved processing.";
+    ? `Personuppgiftsansvarig / Controller: ${policy.controller}\nKontakt / Contact: ${policy.contact}\nÄndamål / Purpose: ${policy.purpose}\nRättslig grund / Legal basis: ${policy.lawful_basis}\nAvslutad lånehistorik / Completed loan history: ${policy.loan_days} dagar / days\nLoggar / Logs: ${policy.event_days} dagar / days`
+    : "Information om behandlingen är inte konfigurerad. Använd endast fiktiva uppgifter tills verksamheten har beslutat om hanteringen. / Processing information is not configured. Use fictitious data until the organisation has approved processing.";
   // Public notice can be read without forcing a login.
   const sessionResponse = await fetch("/api/auth/session");
   if (!sessionResponse.ok) return;
   privacySession = (await sessionResponse.json()).data;
-  setTimeout(() => location.reload(), Math.max(1, privacySession.expires_in || 0) * 1000);
   if (privacySession.role !== "superadmin") return;
   element("privacyAdmin").hidden = false;
+  setTimeout(() => { element("privacyAdmin").hidden = true; }, Math.max(1, privacySession.expires_in || 0) * 1000);
   const form = element("policyForm");
   Object.entries(policy).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value; });
   form.addEventListener("submit", (event) => {

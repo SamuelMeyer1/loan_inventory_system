@@ -227,6 +227,8 @@ def teams_ready(settings: dict[str, str]) -> bool:
 
 
 def email_msg(subject: str, body: str, recipients: list[str], settings: dict[str, str] | None = None) -> int:
+    if os.environ.get("LOAN_SIMULATION") == "1":
+        raise ValueError("Simuleringsmiljön tillåter inga externa utskick.")
     if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
         raise ValueError("Externa notiser är spärrade. IT-godkänd konfiguration krävs innan LOAN_ENABLE_NOTIFICATIONS=1 sätts.")
     settings = settings or get_system_settings()
@@ -269,6 +271,8 @@ def send_email(subject: str, body: str, recipients: list[str], settings: dict[st
 
 
 def raw_smtp_message(server: str, port: int, mail_from: str, rcpt_to: str, subject: str, body: str, ehlo_name: str) -> None:
+    if os.environ.get("LOAN_SIMULATION") == "1":
+        raise ValueError("Simuleringsmiljön tillåter inga externa utskick.")
     if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
         raise ValueError("Externa notiser är spärrade.")
     message = EmailMessage()
@@ -284,6 +288,8 @@ def raw_smtp_message(server: str, port: int, mail_from: str, rcpt_to: str, subje
 
 
 def team_msg(subject: str, body: str, recipients: list[str], settings: dict[str, str] | None = None) -> int:
+    if os.environ.get("LOAN_SIMULATION") == "1":
+        raise ValueError("Simuleringsmiljön tillåter inga externa utskick.")
     if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
         raise ValueError("Externa notiser är spärrade. IT-godkänd konfiguration krävs innan LOAN_ENABLE_NOTIFICATIONS=1 sätts.")
     settings = settings or get_system_settings()
@@ -408,7 +414,7 @@ def send_loan_reminders() -> dict[str, int]:
             "user_name": loan["user_name"],
             "object_name": loan["object_name"],
             "object_id": loan["object_id"],
-            "quantity": loan["quantity"],
+            "quantity": loan["quantity"] - loan["returned_quantity"],
             "due_time": due_time,
         }
         subject_key = "message_loan_overdue_subject" if is_overdue else "message_loan_reminder_subject"
@@ -460,7 +466,7 @@ def send_loan_reminder(loan_id: int) -> dict[str, Any]:
         "user_name": loan["user_name"],
         "object_name": loan["object_name"],
         "object_id": loan["object_id"],
-        "quantity": loan["quantity"],
+        "quantity": loan["quantity"] - loan["returned_quantity"],
         "due_time": due_time,
     }
     subject_key = "message_loan_overdue_subject" if is_overdue else "message_loan_reminder_subject"

@@ -1,13 +1,16 @@
 # Dataskydd i den lokala prototypen
 
-Uppdaterad 2026-10-15. Detta dokument beskriver tekniskt stöd och kvarstående
+Uppdaterad 2026-10-22. Detta dokument beskriver tekniskt stöd och kvarstående
 verksamhetsbeslut. Det är ingen certifiering eller juridisk bedömning av GDPR-efterlevnad.
 
 ## Start och behörigheter
 
-Appen fungerar nu som en lokal prototyp på samma dator. Kör kommandona från
-projektroten. Säkerhetskopiera databasen enligt företagets godkända rutin innan
-migrering. Första kontot skapas manuellt, utan standardlösenord:
+Appen fungerar nu som en lokal prototyp på samma dator. På loopback visas
+operatörsvyn utan inloggning; Admin och Superadmin kräver fortfarande konto.
+Den anonyma lokala operatören kan hantera och se låntagaruppgifter, så använd
+endast fiktiva uppgifter och exponera inte servern på nätverket. Kör kommandona
+från projektroten. Säkerhetskopiera databasen enligt företagets godkända rutin
+innan migrering. Första kontot skapas manuellt, utan standardlösenord:
 
 ```powershell
 python -B -m backend.manage_access ditt-kontonamn --role superadmin
@@ -48,7 +51,38 @@ kräver sessionsbundet CSRF-skydd och ett särskilt klienthuvud. Inloggningsför
 begränsas till fem per minut och källadress; på en gemensam dator kan detta
 tillfälligt hindra även legitima inloggningar.
 
+För isolerad lokal UI-testning finns valfria, fasta konton (`admin` och
+`superadmin`) som aktiveras med `LOAN_LOCAL_FIXED_TEST_CREDENTIALS=1` och
+lösenordsvariablerna `LOAN_LOCAL_ADMIN_PASSWORD` respektive
+`LOAN_LOCAL_SUPERADMIN_PASSWORD`. De lagras som scrypt-hash och låses mot
+ändring/borttagning via kontoverktyget. Appen vägrar LAN-start när flaggan är
+aktiv eller databasen innehåller dessa markerade konton. Använd bara på
+loopback med en lokal testdatabas; svaga testlösenord får inte användas i
+LAN-/produktionsmiljö.
+
 ## Personuppgifter och rättighetsärenden
+
+### Isolerad testmiljö
+
+Startfönstret (`python -B launcher.py`) har ett separat simuleringsläge. Varje
+start skapar en ny databas med fejkdata och lokala testkonton; befintliga filer
+kopieras eller ersätts inte. Simuleringen binds bara till loopback och spärrar
+externa transporter och fysisk kortläsning även om inställningar ändras i appen.
+Det skiljer sig från notifieringssimuleringen, som annars kan skicka till en
+testmottagare. Testfilerna sparas lokalt och raderas inte automatiskt.
+
+Startfönstrets vanliga lokala-/LAN-lägen använder vald databas och kan migrera
+dess schema. Externa utskick är avstängda vid start via detta fönster. En
+tidigare simuleringsfil som öppnas i vanligt lokalt läge är inte längre i
+det särskilt spärrade simuleringsläget. Använd aldrig verkliga personuppgifter
+i simuleringsfilerna.
+
+Startfönstrets HTTP-diagnostik loggar endast metod, statuskod och behandlingstid,
+inte begärans URL, parametrar, cookies eller formulärdata. Start-/felutskrifter
+kan även innehålla lokala filsökvägar. Loggarna sparas lokalt per körning i
+`LoanInventoryLauncher` under användarens datakatalog och raderas inte automatiskt.
+
+### Information till låntagare
 
 Namn och mejl krävs i nuvarande låntagarformulär. Verksamheten måste bedöma om
 mejl och uppdelning i för-/efternamn behövs för dess valda arbetsflöde. Telefon
@@ -62,6 +96,15 @@ grund och beslutade gallringstider. Beskriv även mottagare, integrationer,
 eventuella överföringar och hur användarprofiler hanteras i textfälten.
 Tom konfiguration är tydligt markerad och innebär att endast testdata ska användas.
 Att fylla i fälten ersätter inte företagets rättsliga bedömning.
+För frågor om personuppgifter är kontaktpersonen Olof Samuelsson:
+[olof.samuelsson@volvo.com](mailto:olof.samuelsson@volvo.com).
+
+Vid ny låntagarprofil ska Admin visa behandlingsinformationen för personen och
+registrera att personen bekräftar att den tagit del av den. Tidpunkten sparas på
+profilen och ingår i registerunderlaget; äldre profiler får ingen bakdaterad
+bekräftelse. Detta är endast en kvittens på lämnad information, inte ett
+GDPR-samtycke eller en rättslig grund. Verksamheten ansvarar för att välja och
+dokumentera lämplig rättslig grund. Profilredigering kräver inte en ny kvittens.
 
 **Registerunderlag:** Ange låntagar-ID och visa underlaget. Det omfattar profil,
 lån, förfrågningar, kopplade kontons metadata, strukturerad säkerhetslogg och
@@ -134,12 +177,25 @@ datamängd, behandlingsinformation, mottagare, gallring, rättighetsärenden och
 incidentrutin. Bedöm behov av konsekvensbedömning utifrån den faktiska risken.
 Utse systemägare, behörighetsansvarig och ansvarig för uppdateringar/återställning.
 
-Denna version är begränsad till loopback; nätverksbindning nekas före appstart.
-HTTP och cookies utan Secure får endast användas i denna lokala prototyp.
-Cookies, värd-/Origin-kontroll och nätverksmodell behöver anpassas tillsammans
-med IT-godkänd HTTPS, företagsinloggning, eventuell MFA och driftplattform innan
-flera personer använder den över nätet. Python `http.server` är inte en färdig
-produktionsplattform. Ta inte bort loopback-spärren som en genväg.
+Normal start är begränsad till loopback. Ett uttryckligt LAN-testläge kan bindas
+till en enda privat IPv4-adress med `LOAN_ALLOW_LAN=1` och `LOAN_HOST`; servern
+avvisar wildcard- och publika adresser och kontrollerar värdhuvudet mot den
+konfigurerade adressen. LAN-testläget ger alla besökare en gemensam anonym
+operatörsidentitet. Den kan läsa samtliga låntagarprofiler, lån och förfrågningar
+som operatörsvyn exponerar samt utföra operatörsåtgärder för valfri låntagare.
+Detta är avsiktligt bredare än personliga operatörskonton och medför att vem som
+helst på det tillåtna nätverket delar denna åtkomst. Använd läget endast
+tillfälligt, på ett godkänt privat nätverk och med en separat databas och
+fiktiva uppgifter. Öppna inte porten mot internet eller via router.
+Brandväggsregler ska godkännas av IT och begränsas till rätt nätverksprofil.
+Admin/Superadmin loggar fortfarande in separat.
+
+LAN-testläget använder okrypterad HTTP och cookies utan `Secure`; uppgifter och
+sessionstrafik krypteras alltså inte på nätverket. Det är inte godkänt för
+riktiga personuppgifter eller normal delad drift. Innan flera personer använder
+systemet med riktiga uppgifter krävs en IT-godkänd HTTPS-lösning,
+företagsinloggning, eventuell MFA och driftplattform. Python `http.server` är
+inte en färdig produktionsplattform. LAN-testläget ersätter inte dessa krav.
 
 SQLite är inte krypterad av appen. IT behöver bedöma filbehörigheter, diskkryptering,
 lokal datoråtkomst, backupkryptering och retention, testad återställning samt hur
@@ -189,3 +245,12 @@ webbläsargranskning. Befintlig `data/inventory.db` har inte ändrats av arbetet
 - [IMY: De registrerades rättigheter](https://www.imy.se/verksamhet/dataskydd/det-har-galler-enligt-gdpr/de-registrerades-rattigheter/)
 - [OWASP: Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 - [OWASP: CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+## Återlämningar och skadebeskrivningar
+
+Delreturer sparas med antal, tidpunkt och eventuell skadebeskrivning. Skriv endast
+saklig information om artikeln, inte namn eller andra personuppgifter, i skadefältet.
+Skadekön är endast tillgänglig för Admin/Systemadmin. Registerutdrag omfattar
+retur- och skadeposter. Radering blockeras medan skador är i karantän; gallring
+väntar dessutom tills beslutad lånehistoriktid passerat efter skadeåtgärden.
+Vid tillåten radering av lånet tas dess retur- och skadebeskrivningar också bort,
+utan att redan bokförda lagersaldon ändras.

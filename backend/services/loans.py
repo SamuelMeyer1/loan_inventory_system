@@ -18,7 +18,8 @@ from backend.services.common import (
 def list_active_loans() -> list[dict[str, Any]]:
     loans = rows(
         """
-        SELECT l.*, u.name AS user_name, u.department AS user_department, u.email AS user_email,
+        SELECT l.*, l.quantity - l.returned_quantity AS remaining_quantity,
+               u.name AS user_name, u.department AS user_department, u.email AS user_email,
                o.name AS object_name, o.tornado_id, o.door_id,
                COALESCE(r.request_group_id, r.request_id) AS request_group_id
         FROM loans l
@@ -296,6 +297,14 @@ def update_loan_request_status(payload: dict[str, Any]) -> dict[str, Any]:
     timestamp = now_text()
     new_available_quantity = None
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        current_status = db.execute("SELECT status FROM loan_requests WHERE request_id = ?", (request_id,)).fetchone()
+        if not current_status:
+            raise ValueError("Jobbet hittades inte.")
+        if current_status["status"] in ("returned", "stocked") and status not in (current_status["status"], "stocked"):
+            raise ValueError("Ett återlämnat jobb kan inte öppnas igen.")
+        if status == "stocked":
+            ensure_request_can_be_stocked(db, request_id)
         if status == "loaned":
             new_available_quantity = ensure_loan_for_request(db, request, timestamp)
         elif status == "returned":
@@ -410,6 +419,8 @@ def update_loan_request_group_status(payload: dict[str, Any]) -> dict[str, Any]:
                 available = ensure_loan_for_request(db, request, timestamp)
             elif status == "returned":
                 return_linked_loan_for_request(db, request, timestamp)
+            elif status == "stocked":
+                ensure_request_can_be_stocked(db, request["request_id"])
             db.execute(
                 "UPDATE loan_requests SET status = ?, updated_at = ? WHERE request_id = ?",
                 (status, timestamp, request["request_id"]),
@@ -613,12 +624,22 @@ def ensure_loan_for_request(db, request: dict[str, Any], timestamp: str) -> int 
     return available
 
 
+def ensure_request_can_be_stocked(db, request_id: int) -> None:
+    outstanding = db.execute("""SELECT 1 FROM loans l
+        WHERE l.loan_request_id = ? AND
+        (l.returned_quantity < l.quantity OR EXISTS
+         (SELECT 1 FROM loan_returns r WHERE r.loan_id = l.loan_id AND r.damage_status = 'quarantined'))""",
+        (request_id,)).fetchone()
+    if outstanding:
+        raise ValueError("Återlämna återstående antal och åtgärda skador före lagerföring.")
+
+
 def return_linked_loan_for_request(db, request: dict[str, Any], timestamp: str) -> None:
     active_loan = db.execute(
         "SELECT * FROM loans WHERE loan_request_id = ? AND status = 'active'",
         (request["request_id"],),
     ).fetchone()
-    if not active_loan:
+    if not active_loan and not db.execute("SELECT 1 FROM loans WHERE loan_request_id = ?", (request["request_id"],)).fetchone():
         active_loan = db.execute(
             """
             SELECT * FROM loans
@@ -626,24 +647,31 @@ def return_linked_loan_for_request(db, request: dict[str, Any], timestamp: str) 
               AND object_id = ?
               AND loan_request_id IS NULL
               AND status = 'active'
+              AND quantity = ?
             ORDER BY checkout_time DESC
             LIMIT 1
             """,
-            (request["user_id"], request["object_id"]),
+            (request["user_id"], request["object_id"], request["quantity"]),
         ).fetchone()
     if not active_loan:
         return
+    if active_loan["loan_request_id"] is None:
+        db.execute("UPDATE loans SET loan_request_id = ? WHERE loan_id = ?",
+                   (request["request_id"], active_loan["loan_id"]))
 
     object_item = db.execute("SELECT * FROM objects WHERE object_id = ?", (active_loan["object_id"],)).fetchone()
-    available = int(object_item["available_quantity"]) + int(active_loan["quantity"])
+    quantity = int(active_loan["quantity"]) - int(active_loan["returned_quantity"])
+    available = int(object_item["available_quantity"]) + quantity
     db.execute(
-        "UPDATE loans SET return_time = ?, status = 'returned' WHERE loan_id = ?",
+        "UPDATE loans SET return_time = ?, returned_quantity = quantity, status = 'returned' WHERE loan_id = ?",
         (timestamp, active_loan["loan_id"]),
     )
     db.execute(
         "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ?",
         (available, object_status(available, int(object_item["min_quantity"] or 0)), active_loan["object_id"]),
     )
+    db.execute("INSERT INTO loan_returns (loan_id, quantity, returned_at) VALUES (?, ?, ?)",
+               (active_loan["loan_id"], quantity, timestamp))
 
 
 def delete_loan_request(request_id: int) -> dict[str, Any]:
@@ -666,6 +694,8 @@ def delete_loan_request(request_id: int) -> dict[str, Any]:
 
     timestamp = now_text()
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        ensure_request_can_be_stocked(db, request_id)
         db.execute("DELETE FROM loan_requests WHERE request_id = ?", (request_id,))
         db.execute(
             "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
@@ -763,25 +793,26 @@ def checkout(payload: dict[str, Any]) -> dict[str, Any]:
     if not due_time:
         raise ValueError("Ange returdatum.")
 
-    object_item = row("SELECT * FROM objects WHERE object_id = ?", (object_id,))
-    if object_item is None:
-        raise ValueError("Objektet hittades inte.")
-    if is_consumable_object(dict(object_item)):
-        raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Förbrukningsvara.")
-    if object_item["available_quantity"] < quantity:
-        raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
-
-    user = row("SELECT * FROM users WHERE user_id = ? AND active = 1", (user_id,))
-    if user is None:
-        raise ValueError("Användaren hittades inte.")
-
-    ensure_user_can_borrow(user_id, user["name"])
     validate_loan_period(lending_date, due_time)
 
     checkout_time = f"{lending_date} 08:00:00" if len(lending_date) == 10 else lending_date
     due_value = f"{due_time} 16:00:00" if len(due_time) == 10 else due_time
 
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        object_item = db.execute("SELECT * FROM objects WHERE object_id = ?", (object_id,)).fetchone()
+        if object_item is None:
+            raise ValueError("Objektet hittades inte.")
+        if is_consumable_object(dict(object_item)):
+            raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Förbrukningsvara.")
+        if object_item["available_quantity"] < quantity:
+            raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
+
+        user = db.execute("SELECT * FROM users WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
+        if user is None:
+            raise ValueError("Användaren hittades inte.")
+
+        ensure_user_can_borrow(user_id, user["name"], db)
         cursor = db.execute(
             """
             INSERT INTO loans (
@@ -794,10 +825,12 @@ def checkout(payload: dict[str, Any]) -> dict[str, Any]:
         )
         loan_id = int(cursor.lastrowid)
         available = object_item["available_quantity"] - quantity
-        db.execute(
-            "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ?",
-            (available, object_status(available, object_item["min_quantity"]), object_id),
+        updated = db.execute(
+            "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ? AND available_quantity >= ?",
+            (available, object_status(available, object_item["min_quantity"]), object_id, quantity),
         )
+        if updated.rowcount != 1:
+            raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
         db.execute(
             "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
             (checkout_time, "loan", f"{user['name']} lånade {quantity} x {object_item['name']} ({object_id})"),
@@ -819,23 +852,26 @@ def issue_item(payload: dict[str, Any]) -> dict[str, Any]:
     if quantity <= 0:
         raise ValueError("Antal måste vara större än 0.")
 
-    object_item = row("SELECT * FROM objects WHERE object_id = ?", (object_id,))
-    if object_item is None:
-        raise ValueError("Objektet hittades inte.")
-    if object_item["available_quantity"] < quantity:
-        raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
-
-    user = row("SELECT * FROM users WHERE user_id = ? AND active = 1", (user_id,))
-    if user is None:
-        raise ValueError("Användaren hittades inte.")
-
     issued_at = now_text()
-    available = object_item["available_quantity"] - quantity
     with connect() as db:
-        db.execute(
-            "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ?",
-            (available, object_status(available, object_item["min_quantity"]), object_id),
+        db.execute("BEGIN IMMEDIATE")
+        object_item = db.execute("SELECT * FROM objects WHERE object_id = ?", (object_id,)).fetchone()
+        if object_item is None:
+            raise ValueError("Objektet hittades inte.")
+        if object_item["available_quantity"] < quantity:
+            raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
+
+        user = db.execute("SELECT * FROM users WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
+        if user is None:
+            raise ValueError("Användaren hittades inte.")
+
+        available = object_item["available_quantity"] - quantity
+        updated = db.execute(
+            "UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ? AND available_quantity >= ?",
+            (available, object_status(available, object_item["min_quantity"]), object_id, quantity),
         )
+        if updated.rowcount != 1:
+            raise ValueError("Det finns inte tillräckligt antal tillgängligt.")
         db.execute(
             "INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
             (issued_at, "issue", f"{user['name']} checkade ut {quantity} x {object_item['name']} ({object_id}) utan retur"),
@@ -846,27 +882,54 @@ def issue_item(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def return_item(payload: dict[str, Any]) -> dict[str, Any]:
+    items = payload.get("items")
     loan_ids = payload.get("loan_ids")
     identifier = str(payload.get("identifier", "")).strip()
+    selections = {}
+    if items is not None:
+        if loan_ids is not None or identifier or not isinstance(items, list) or not 1 <= len(items) <= 500:
+            raise ValueError("Ogiltigt urval av lån.")
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("Ogiltig returrad.")
+            loan_id = _return_integer(item.get("loan_id"), 1)
+            quantity = _return_integer(item.get("quantity"), 1)
+            damaged = _return_integer(item.get("damaged_quantity", 0), 0)
+            expected = _return_integer(item.get("expected_returned_quantity"), 0)
+            description = item.get("damage_description", "")
+            if not isinstance(description, str) or len(description) > 2000:
+                raise ValueError("Skadebeskrivningen får innehålla högst 2000 tecken.")
+            description = description.strip()
+            if damaged > quantity or (damaged and not description) or (description and not damaged):
+                raise ValueError("Ange skadat antal inom returantalet och en skadebeskrivning.")
+            if loan_id in selections:
+                raise ValueError("Ett lån får bara förekomma en gång.")
+            selections[loan_id] = (quantity, damaged, description, expected)
+        loan_ids = list(selections)
     if loan_ids is not None:
         if not isinstance(loan_ids, list) or not loan_ids:
             raise ValueError("Välj minst ett aktivt lån.")
         try:
-            loan_ids = list(dict.fromkeys(int(str(value)) for value in loan_ids))
+            loan_ids = list(dict.fromkeys(_return_integer(value, 1) for value in loan_ids))
         except (ValueError, TypeError):
             raise ValueError("Ogiltigt lån-ID.")
         if len(loan_ids) > 500 or any(value <= 0 for value in loan_ids):
             raise ValueError("Ogiltigt urval av lån.")
-        if not payload.get("user_id"):
+        if not isinstance(payload.get("user_id"), str) or not payload["user_id"].strip():
             raise ValueError("Välj användare.")
     elif not identifier:
         raise ValueError("Ange objekt-ID eller lån-ID.")
     returned_at = now_text()
+    summary = []
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         if loan_ids is None:
             condition = "l.loan_id = ?" if identifier.isdigit() else "l.object_id = ?"
-            found = db.execute(_active_loan_query(condition), (identifier,)).fetchone()
+            params = (identifier,)
+            if payload.get("user_id"):
+                condition += " AND l.user_id = ?"
+                params += (payload["user_id"],)
+            found = db.execute(_active_loan_query(condition), params).fetchone()
             active_loans = [found] if found else []
         else:
             active_loans = [db.execute(_active_loan_query("l.loan_id = ? AND l.user_id = ?"),
@@ -874,24 +937,93 @@ def return_item(payload: dict[str, Any]) -> dict[str, Any]:
         if not active_loans or any(loan is None for loan in active_loans):
             raise ValueError("Ett valt lån är inte längre aktivt eller tillhör inte användaren. Uppdatera listan.")
         for loan in active_loans:
+            remaining = loan["quantity"] - loan["returned_quantity"]
+            quantity, damaged, description, expected = selections.get(
+                loan["loan_id"], (remaining, 0, "", loan["returned_quantity"]))
+            if expected != loan["returned_quantity"] or quantity > remaining:
+                raise ValueError("Lånet har ändrats eller returantalet är för stort. Uppdatera listan.")
+            request_id = loan["loan_request_id"]
+            if request_id is None:
+                legacy_request = db.execute("""SELECT r.request_id FROM loan_requests r
+                    WHERE r.user_id = ? AND r.object_id = ? AND r.quantity = ? AND r.status = 'loaned'
+                    AND NOT EXISTS (SELECT 1 FROM loans linked WHERE linked.loan_request_id = r.request_id)
+                    ORDER BY r.updated_at DESC, r.request_id DESC LIMIT 1""",
+                    (loan["user_id"], loan["object_id"], loan["quantity"])).fetchone()
+                if legacy_request:
+                    request_id = legacy_request["request_id"]
+                    db.execute("UPDATE loans SET loan_request_id = ? WHERE loan_id = ?", (request_id, loan["loan_id"]))
             object_item = db.execute("SELECT * FROM objects WHERE object_id = ?", (loan["object_id"],)).fetchone()
-            available = object_item["available_quantity"] + loan["quantity"]
-            db.execute("UPDATE loans SET return_time = ?, status = 'returned' WHERE loan_id = ?",
-                       (returned_at, loan["loan_id"]))
+            available = object_item["available_quantity"] + quantity - damaged
+            cumulative = loan["returned_quantity"] + quantity
+            complete = cumulative == loan["quantity"]
+            db.execute("UPDATE loans SET returned_quantity = ?, return_time = ?, status = ? WHERE loan_id = ?",
+                       (cumulative, returned_at if complete else None, "returned" if complete else "active", loan["loan_id"]))
             db.execute("UPDATE objects SET available_quantity = ?, status = ? WHERE object_id = ?",
                        (available, object_status(available, object_item["min_quantity"]), loan["object_id"]))
-            if loan["loan_request_id"]:
+            cursor = db.execute("""INSERT INTO loan_returns
+                (loan_id, quantity, damaged_quantity, damage_description, damage_status, returned_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (loan["loan_id"], quantity, damaged, description, "quarantined" if damaged else None, returned_at))
+            if complete and request_id:
                 db.execute("UPDATE loan_requests SET status = 'returned', updated_at = ? WHERE request_id = ?",
-                           (returned_at, loan["loan_request_id"]))
-            else:
-                db.execute("""UPDATE loan_requests SET status = 'returned', updated_at = ? WHERE request_id = (
-                    SELECT request_id FROM loan_requests WHERE user_id = ? AND object_id = ? AND status = 'loaned'
-                    ORDER BY updated_at DESC LIMIT 1)""", (returned_at, loan["user_id"], loan["object_id"]))
+                           (returned_at, request_id))
             db.execute("INSERT INTO events (event_time, event_type, message) VALUES (?, ?, ?)",
-                       (returned_at, "return", f"{loan['user_name']} lämnade tillbaka {loan['quantity']} x {loan['object_name']} ({loan['object_id']})"))
+                       (returned_at, "return", f"Återlämnat {quantity}; skadat {damaged}; lån {loan['loan_id']}"))
+            summary.append({"loan_id": loan["loan_id"], "return_id": cursor.lastrowid,
+                            "object_id": loan["object_id"], "object_name": loan["object_name"],
+                            "quantity": quantity, "damaged_quantity": damaged,
+                            "returned_quantity": cumulative, "remaining_quantity": remaining - quantity})
+        remaining_total = db.execute("""SELECT COALESCE(SUM(quantity - returned_quantity), 0)
+            FROM loans WHERE user_id = ? AND status = 'active'""", (active_loans[0]["user_id"],)).fetchone()[0]
     for loan in active_loans:
         open_door(loan["tornado_id"], loan["door_id"], "return")
-    return {"loan_id": active_loans[0]["loan_id"], "loan_ids": [loan["loan_id"] for loan in active_loans]}
+    return {"loan_id": active_loans[0]["loan_id"], "loan_ids": [loan["loan_id"] for loan in active_loans],
+            "items": summary, "returned_quantity": sum(item["quantity"] for item in summary),
+            "damaged_quantity": sum(item["damaged_quantity"] for item in summary),
+            "remaining_quantity": remaining_total}
+
+
+def _return_integer(value: Any, minimum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, str)) or not str(value).isascii() or not str(value).isdigit():
+        raise ValueError("Antal och ID måste vara heltal.")
+    number = int(value)
+    if number < minimum or number > 2147483647:
+        raise ValueError("Ogiltigt antal eller ID.")
+    return number
+
+
+def list_damaged_returns() -> list[dict[str, Any]]:
+    return rows("""SELECT r.*, l.object_id, o.name AS object_name
+        FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
+        JOIN objects o ON o.object_id = l.object_id
+        WHERE r.damage_status = 'quarantined' ORDER BY r.return_id""")
+
+
+def resolve_damaged_return(payload: dict[str, Any]) -> dict[str, Any]:
+    return_id = _return_integer(payload.get("return_id"), 1)
+    resolution = payload.get("resolution")
+    if not isinstance(resolution, str) or resolution not in ("repaired", "discarded") or payload.get("confirmed") is not True:
+        raise ValueError("Bekräfta reparation eller kassering.")
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        report = db.execute("""SELECT r.*, l.object_id FROM loan_returns r
+            JOIN loans l ON l.loan_id = r.loan_id WHERE r.return_id = ?""", (return_id,)).fetchone()
+        if not report or report["damage_status"] != "quarantined":
+            raise ValueError("Skadan är redan åtgärdad eller hittades inte.")
+        item = db.execute("SELECT * FROM objects WHERE object_id = ?", (report["object_id"],)).fetchone()
+        quantity = report["damaged_quantity"]
+        available = item["available_quantity"] + (quantity if resolution == "repaired" else 0)
+        total = item["total_quantity"] - (quantity if resolution == "discarded" else 0)
+        if total < available:
+            raise ValueError("Lagersaldot är inkonsekvent. Kontrollera underlaget.")
+        timestamp = now_text()
+        db.execute("UPDATE objects SET total_quantity = ?, available_quantity = ?, status = ? WHERE object_id = ?",
+                   (total, available, object_status(available, item["min_quantity"]), report["object_id"]))
+        db.execute("UPDATE loan_returns SET damage_status = ?, resolved_at = ? WHERE return_id = ?",
+                   (resolution, timestamp, return_id))
+        db.execute("INSERT INTO events (event_time, event_type, message) VALUES (?, 'damage', ?)",
+                   (timestamp, f"Skada {return_id}: {resolution}, antal {quantity}"))
+    return {"return_id": return_id, "resolution": resolution, "quantity": quantity}
 
 
 def _active_loan_query(condition: str) -> str:

@@ -39,9 +39,15 @@ function updateCheckoutInfo(selectedItem = null) {
   $("#checkoutObjectStatus").value = statusText(item.status || "");
 }
 
-function renderReturnLoans() {
+function renderReturnLoans(preserveDraft = false) {
   const body = $("#returnLoansBody");
   if (!body) return;
+  const draft = preserveDraft ? [...body.querySelectorAll("[data-return-select]")].map((input) => ({
+    id: input.dataset.returnSelect, checked: input.checked,
+    quantity: $(`[data-return-quantity="${input.dataset.returnSelect}"]`).value,
+    damaged: $(`[data-return-damaged="${input.dataset.returnSelect}"]`).value,
+    description: $(`[data-return-description="${input.dataset.returnSelect}"]`).value,
+  })) : [];
   const selectedUserId = $("#returnUser")?.value || "";
   const empty = $("#returnLoansEmpty");
   const matches = selectedUserId
@@ -52,20 +58,28 @@ function renderReturnLoans() {
     <tr class="${loan.overdue ? "late" : ""}">
       <td><input type="checkbox" data-return-select="${loan.loan_id}" aria-label="${escapeHtml((state.language === 'en' ? 'Return ' : 'Återlämna ') + loan.object_name)}"> ${loan.loan_id}${loan.request_group_id ? `<small class="request-reference">${state.language === "en" ? "Request" : "Förfrågan"} #${loan.request_group_id}</small>` : ""}</td>
       <td>${escapeHtml(loan.object_name)} (${escapeHtml(loan.object_id)})</td>
-      <td>${escapeHtml(loan.user_name)}</td>
-      <td>${escapeHtml(loan.user_department || "")}</td>
-      <td>${escapeHtml(loan.engine_id || "")}</td>
-      <td>${escapeHtml(loan.project_number || "")}</td>
-      <td>${loan.quantity}</td>
-      <td>${formatTime(loan.checkout_time)}</td>
+      <td>${loan.remaining_quantity ?? loan.quantity}<small class="request-reference">${t("return.alreadyReturned", { count: loan.returned_quantity || 0 })}</small></td>
+      <td><input class="return-quantity" type="number" min="1" max="${loan.remaining_quantity ?? loan.quantity}" step="1" value="${loan.remaining_quantity ?? loan.quantity}" data-return-quantity="${loan.loan_id}" aria-label="${escapeHtml(t("return.quantity") + ' ' + loan.object_name)}"></td>
+      <td><input class="return-quantity" type="number" min="0" max="${loan.remaining_quantity ?? loan.quantity}" step="1" value="0" data-return-damaged="${loan.loan_id}" aria-label="${escapeHtml(t("return.damaged") + ' ' + loan.object_name)}"></td>
+      <td><textarea maxlength="2000" rows="2" data-return-description="${loan.loan_id}" aria-label="${escapeHtml(t("return.description") + ' ' + loan.object_name)}" placeholder="${escapeHtml(t("return.descriptionHint"))}"></textarea></td>
       <td>${formatTime(loan.due_time)}</td>
-      <td>${statusBadge(loan.overdue ? "Sen" : "Aktiv")}</td>
-      <td><button class="primary-button table-return-button" type="button" data-return-loan="${loan.loan_id}">Återlämna</button></td>
     </tr>
   `).join("");
+  draft.forEach((item) => {
+    const input = $(`[data-return-select="${item.id}"]`);
+    if (!input) return;
+    input.checked = item.checked;
+    $(`[data-return-quantity="${item.id}"]`).value = item.quantity;
+    $(`[data-return-damaged="${item.id}"]`).value = item.damaged;
+    $(`[data-return-description="${item.id}"]`).value = item.description;
+  });
 
-  document.querySelectorAll("[data-return-loan]").forEach((button) => {
-    button.addEventListener("click", () => returnItem(Number(button.dataset.returnLoan)));
+  body.querySelectorAll("[data-return-quantity], [data-return-damaged], [data-return-description]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const id = input.dataset.returnQuantity || input.dataset.returnDamaged || input.dataset.returnDescription;
+      $(`[data-return-select="${id}"]`).checked = true;
+      updateReturnButtons();
+    });
   });
 
   document.querySelectorAll("[data-return-select]").forEach((input) => input.addEventListener("change", updateReturnButtons));
@@ -74,9 +88,21 @@ function renderReturnLoans() {
     empty.textContent = selectedUserId
       ? matches.length
         ? ""
-        : "Den valda användaren har inga aktiva utlåningar."
-      : "Välj en användare för att se aktiva utlåningar.";
+        : t("return.noLoans")
+      : t("return.chooseBorrower");
   }
+  renderReturnSummary();
+}
+
+function returnBorrowers() {
+  const users = new Map(state.users.map((user) => [user.user_id, user]));
+  state.loans.forEach((loan) => {
+    if (!users.has(loan.user_id)) {
+      users.set(loan.user_id, { user_id: loan.user_id, name: loan.user_name,
+        department: loan.user_department, email: loan.user_email });
+    }
+  });
+  return [...users.values()];
 }
 
 function renderReturnUserSuggestions() {
@@ -91,7 +117,7 @@ function renderReturnUserSuggestions() {
   }
 
   const labels = userLabels();
-  const matches = state.users.filter((user) => userSearchText(user).includes(term)).slice(0, 8);
+  const matches = returnBorrowers().filter((user) => userSearchText(user).includes(term)).slice(0, 8);
   suggestions.innerHTML = matches.map((user) => `
     <button class="suggestion-button" type="button" data-select-return-user="${escapeHtml(user.user_id)}">
       <strong>${escapeHtml(labels.get(user.user_id) || user.name)}</strong>
@@ -202,7 +228,7 @@ function renderMyLoans() {
       <td>${escapeHtml(loan.user_department || "")}</td>
       <td>${escapeHtml(loan.engine_id || "")}</td>
       <td>${escapeHtml(loan.project_number || "")}</td>
-      <td>${loan.quantity}</td>
+      <td>${loan.remaining_quantity ?? loan.quantity}</td>
       <td>${formatTime(loan.checkout_time)}</td>
       <td>${formatTime(loan.due_time)}</td>
       <td><strong>${escapeHtml(daysUntilDueText(loan.due_time))}</strong></td>
@@ -256,7 +282,7 @@ function selectMyLoansUser(userId) {
 }
 
 function selectReturnUser(userId) {
-  const user = state.users.find((item) => item.user_id === userId);
+  const user = returnBorrowers().find((item) => item.user_id === userId);
   if (!user) return;
   const labels = userLabels();
   $("#returnUser").value = user.user_id;
@@ -288,7 +314,7 @@ function printLoanReceipt(loanId) {
         <dt>Project Number</dt><dd>${escapeHtml(loan.project_number || "")}</dd>
         <dt>Name of borrower</dt><dd>${escapeHtml(loan.user_name)}</dd>
         <dt>Dept no</dt><dd>${escapeHtml(loan.user_department || "")}</dd>
-        <dt>Quantity</dt><dd>${loan.quantity}</dd>
+        <dt>Quantity</dt><dd>${loan.remaining_quantity ?? loan.quantity}</dd>
         <dt>Lending date</dt><dd>${formatTime(loan.checkout_time)}</dd>
         <dt>Return date</dt><dd>${formatTime(loan.due_time)}</dd>
         <dt>Status</dt><dd>${loan.overdue ? "Overdue" : "Active"}</dd>
@@ -350,6 +376,41 @@ function updateReturnButtons() {
   $("#returnAllButton").disabled = state.returnBusy || !hasLoans;
   $("#returnSelectedButton").textContent = `${state.language === "en" ? "Return selected" : "Lämna tillbaka valda"} (${selected})`;
   $("#returnAllButton").textContent = state.language === "en" ? "Return everything for this user" : "Lämna tillbaka allt för användaren";
+  document.querySelectorAll("#returnLoansBody input, #returnLoansBody textarea, #returnUserSearch").forEach((input) => {
+    input.disabled = Boolean(state.returnBusy);
+  });
+}
+
+function renderReturnSummary() {
+  const element = $("#returnSummary");
+  if (!element) return;
+  const summary = state.returnSummary;
+  if (!summary || summary.user_id !== $("#returnUser").value) {
+    element.innerHTML = "";
+    return;
+  }
+  element.innerHTML = `<h2>${t("return.summary")}</h2>
+    <p>${t("return.summaryTotals", { returned: summary.returned_quantity, damaged: summary.damaged_quantity, remaining: summary.remaining_quantity })}</p>
+    <ul>${summary.items.map((item) => `<li>${escapeHtml(item.object_name)}:
+      ${t("return.summaryLine", { returned: item.quantity, damaged: item.damaged_quantity, remaining: item.remaining_quantity })}</li>`).join("")}</ul>`;
+}
+
+function renderDamagedReturns() {
+  const list = $("#damagedReturnsList");
+  if (!list) return;
+  list.innerHTML = (state.damagedReturns || []).length ? state.damagedReturns.map((item) => `
+    <article class="damage-report">
+      <h3>${escapeHtml(item.object_name)} (${escapeHtml(item.object_id)}) — ${item.damaged_quantity}</h3>
+      <p>#${item.return_id} · ${formatTime(item.returned_at)} · ${t("damage.quarantined")}</p>
+      <p class="damage-description">${escapeHtml(item.damage_description)}</p>
+      <div class="checkout-submit-actions">
+        <button type="button" class="primary-button" data-damage-id="${item.return_id}" data-damage-resolution="repaired" ${state.damageBusy ? "disabled" : ""}>${t("damage.repair")}</button>
+        <button type="button" class="danger-button" data-damage-id="${item.return_id}" data-damage-resolution="discarded" ${state.damageBusy ? "disabled" : ""}>${t("damage.discard")}</button>
+      </div>
+    </article>`).join("") : `<p>${t("damage.empty")}</p>`;
+  list.querySelectorAll("[data-damage-resolution]").forEach((button) => {
+    button.addEventListener("click", () => resolveDamage(Number(button.dataset.damageId), button.dataset.damageResolution));
+  });
 }
 
 const JOB_REQUEST_STATUS_ORDER = ["requested", "approved", "prepared", "loaned", "returned", "stocked"];

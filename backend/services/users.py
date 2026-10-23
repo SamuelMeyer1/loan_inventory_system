@@ -205,6 +205,8 @@ def resolve_group_department(department_name: str, department: str = "") -> str:
 
 
 def add_user(payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("privacy_notice_acknowledged") is not True:
+        raise ValueError("Personen måste först ta del av och bekräfta informationen om personuppgifter.")
     first_name = optional_text(payload, "first_name")
     last_name = optional_text(payload, "last_name")
     email = optional_text(payload, "email")
@@ -233,9 +235,10 @@ def add_user(payload: dict[str, Any]) -> dict[str, Any]:
             """
             INSERT INTO users (
                 user_id, name, first_name, last_name, email, phone, company, alias,
-                department, department_name, rfid_code, role, created_at, updated_at, active
+                department, department_name, rfid_code, role, created_at, updated_at,
+                privacy_notice_acknowledged_at, active
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -250,6 +253,7 @@ def add_user(payload: dict[str, Any]) -> dict[str, Any]:
                 department_name,
                 rfid_code,
                 role,
+                timestamp,
                 timestamp,
                 timestamp,
                 active,

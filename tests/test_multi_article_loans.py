@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from pathlib import Path
@@ -47,6 +48,62 @@ class MultiArticleLoansTest(unittest.TestCase):
 
     def stock(self, object_id):
         return database.row("SELECT available_quantity FROM objects WHERE object_id = ?", (object_id,))["available_quantity"]
+
+    def add_single_stock_object(self):
+        with database.connect() as db:
+            db.execute("""INSERT INTO objects (object_id, name, category, location, tornado_id, door_id,
+                total_quantity, available_quantity, min_quantity, status)
+                VALUES ('LAST', 'Last item', 'Tool', 'Test', 'Store', 'Door', 1, 1, 0, 'Available')""")
+
+    def run_simultaneous(self, action):
+        def invoke(user_id):
+            try:
+                action(user_id)
+                return True
+            except ValueError:
+                return False
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            return list(executor.map(invoke, ("user", "other")))
+
+    def test_concurrent_checkouts_cannot_borrow_the_last_item_twice(self):
+        self.add_single_stock_object()
+        barrier = threading.Barrier(2)
+
+        def synchronize_validation(*_args, **_kwargs):
+            barrier.wait(timeout=5)
+
+        payload = {
+            "object_id": "LAST",
+            "quantity": 1,
+            "lending_date": "2026-10-21",
+            "due_time": "2026-10-22",
+        }
+        with patch.object(loans, "validate_loan_period", side_effect=synchronize_validation), \
+                patch.object(loans, "open_door"):
+            results = self.run_simultaneous(lambda user_id: loans.checkout({**payload, "user_id": user_id}))
+
+        self.assertEqual(sorted(results), [False, True])
+        self.assertEqual(self.stock("LAST"), 0)
+        self.assertEqual(len(loans.list_active_loans()), 1)
+
+    def test_concurrent_issues_cannot_take_the_last_item_twice(self):
+        self.add_single_stock_object()
+        barrier = threading.Barrier(2)
+
+        def synchronize_time():
+            barrier.wait(timeout=5)
+            return "2026-10-21 08:00:00"
+
+        with patch.object(loans, "now_text", side_effect=synchronize_time), \
+                patch.object(loans, "open_door"):
+            results = self.run_simultaneous(
+                lambda user_id: loans.issue_item({"object_id": "LAST", "user_id": user_id, "quantity": 1})
+            )
+
+        self.assertEqual(sorted(results), [False, True])
+        self.assertEqual(self.stock("LAST"), 0)
+        self.assertEqual(database.row("SELECT COUNT(*) AS count FROM events WHERE event_type = 'issue'")["count"], 1)
 
     def test_group_partial_then_all_return_and_repeat(self):
         result = self.request()

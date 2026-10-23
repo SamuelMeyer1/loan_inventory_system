@@ -10,12 +10,13 @@ from backend.services import privacy
 
 _initialization_lock = threading.Lock()
 READ = {"/api/stats", "/api/objects", "/api/search", "/api/users", "/api/loans", "/api/loan-requests", "/api/system-settings"}
-ADMIN_READ = {"/api/statistics", "/api/groups", "/api/consumable-reports"}
+ADMIN_READ = {"/api/statistics", "/api/groups", "/api/consumable-reports", "/api/damaged-returns"}
 SUPER_READ = {"/api/events", "/api/privacy/export", "/api/privacy/policy", "/api/privacy/retention", "/api/privacy/erase"}
 ADMIN_WRITE = {
     ("POST", path) for path in ("/api/checkout", "/api/issue", "/api/objects", "/api/users", "/api/users/borrow-override", "/api/users/card", "/api/smartcard/read", "/api/users/scan-card", "/api/groups", "/api/loans/reminder", "/api/loan-requests/pickup-email")
 } | {("PUT", path) for path in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests/details", "/api/consumable-reports")} | {
     ("DELETE", path) for path in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests")}
+ADMIN_WRITE.add(("POST", "/api/damaged-returns/resolve"))
 SUPER_WRITE = {("PUT", "/api/system-settings"), ("POST", "/api/reminders/send"), ("POST", "/api/teams/test"),
                ("PUT", "/api/privacy/policy"), ("POST", "/api/privacy/erase"), ("POST", "/api/privacy/retention")}
 
@@ -38,10 +39,9 @@ class AccessMixin:
         self.pending_cookie = None
         parsed = urlparse(self.path)
         self.api_path = parsed.path
-        # Only loopback HTTP is supported in this prototype; reject DNS rebinding.
         port = self.server.server_port
-        allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
-        if port == 80:
+        allowed_hosts = getattr(self.server, "allowed_hosts", {f"127.0.0.1:{port}", f"localhost:{port}"})
+        if port == 80 and not hasattr(self.server, "allowed_hosts"):
             allowed_hosts |= {"localhost", "127.0.0.1"}
         host = self.headers.get("Host", "")
         if host not in allowed_hosts:
@@ -66,6 +66,12 @@ class AccessMixin:
             if method == "GET" and parsed.path == "/api/privacy/notice":
                 self.send_json({"ok": True, "data": privacy.policy()})
                 return
+            if method == "GET" and parsed.path == "/api/runtime":
+                self.send_json({"ok": True, "data": {
+                    "simulation": getattr(self.server, "simulation", False),
+                    "instance_id": getattr(self.server, "instance_id", ""),
+                }})
+                return
             if method == "POST" and parsed.path == "/api/auth/login":
                 payload = self.read_json()
                 token = access.login(payload.get("username", ""), payload.get("password", ""), self.client_address[0])
@@ -76,6 +82,15 @@ class AccessMixin:
                 self.send_json({"ok": True, "data": identity})
                 return
             self.identity = access.identify(self.headers.get("Cookie"))
+            if self.identity is None and (getattr(self.server, "anonymous_operator", False) or getattr(self.server, "local_operator", False)):
+                self.identity = {
+                    "username": "lan-test-operator",
+                    "role": "operator",
+                    "user_id": None,
+                    "csrf": "lan-test-operator",
+                    "expires_in": 0,
+                    "anonymous": True,
+                }
             if self.identity is None:
                 self.send_json({"ok": False, "error": "Logga in för att använda programmet."}, 401)
                 return
@@ -153,6 +168,8 @@ class AccessMixin:
         if (method, path) in (("POST", "/api/loan-requests"), ("POST", "/api/return"), ("PUT", "/api/loan-requests")):
             if role != "operator":
                 return True
+            if self.identity.get("anonymous"):
+                return True
             payload = self.read_json()
             user_id = self.identity["user_id"]
             if path == "/api/loan-requests" and method == "PUT":
@@ -166,7 +183,9 @@ class AccessMixin:
                 return bool(matches) and all(r["user_id"] == user_id and r["status"] == "prepared" for r in matches)
             if payload.get("user_id") not in (None, "", user_id):
                 return False
-            if path == "/api/return" and (not isinstance(payload.get("loan_ids"), list) or not payload["loan_ids"]):
+            if path == "/api/return" and not any(
+                isinstance(payload.get(key), list) and payload[key] for key in ("loan_ids", "items")
+            ):
                 # Legacy identifier-based returns cannot prove ownership.
                 return False
             payload["user_id"] = user_id
@@ -181,12 +200,17 @@ class AccessMixin:
         if self.api_path == "/api/system-settings" and role != "superadmin":
             payload["data"] = {"max_loan_days": data.get("max_loan_days", "90")}
         if role == "operator":
-            if self.command == "GET" and self.api_path in ("/api/users", "/api/loans", "/api/loan-requests"):
-                data = [r for r in data if r.get("user_id") == self.identity["user_id"]]
-                if self.api_path == "/api/users":
-                    data = [{key: value for key, value in r.items() if key != "rfid_code"} for r in data]
-                payload["data"] = data
-            elif self.api_path == "/api/stats":
+            if self.command == "GET" and self.api_path == "/api/users":
+                if not self.identity.get("anonymous"):
+                    data = [r for r in data if r.get("user_id") == self.identity["user_id"]]
+                payload["data"] = [{
+                    key: value for key, value in user.items()
+                    if key not in ("rfid_code", "privacy_notice_acknowledged_at")
+                } for user in data]
+            elif self.command == "GET" and self.api_path in ("/api/loans", "/api/loan-requests"):
+                if not self.identity.get("anonymous"):
+                    payload["data"] = [r for r in data if r.get("user_id") == self.identity["user_id"]]
+            elif self.command == "GET" and self.api_path == "/api/stats":
                 payload["data"] = {"objects": data.get("objects", 0), "low_stock": data.get("low_stock", 0)}
         return payload
 

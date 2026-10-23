@@ -71,8 +71,7 @@ $StartScript = Join-Path $InstallDir "Starta Loan Inventory System.bat"
 $startContents = @"
 @echo off
 cd /d "$InstallDir"
-start "" "http://127.0.0.1:8000"
-"$VenvPython" main.py
+"$VenvPython" -B launcher.py
 if errorlevel 1 pause
 "@
 Set-Content -LiteralPath $StartScript -Value $startContents -Encoding ASCII

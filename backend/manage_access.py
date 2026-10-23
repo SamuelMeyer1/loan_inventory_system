@@ -16,6 +16,8 @@ def main():
     initialize_database()
     if args.delete:
         with connect() as db:
+            if db.execute("SELECT username FROM local_test_accounts WHERE username=?", (args.username,)).fetchone():
+                parser.error("Det lokala testkontot är låst och kan inte tas bort med kontoverktyget.")
             db.execute("DELETE FROM access_accounts WHERE username=?", (args.username,))
         print("Inloggningskontot har tagits bort.")
         return

@@ -24,7 +24,10 @@ def with_description_images(objects: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def list_objects(search: str = "", category: str = "Alla", status: str = "Alla") -> list[dict[str, Any]]:
-    query = "SELECT * FROM objects WHERE 1 = 1"
+    query = """SELECT objects.*, (SELECT COALESCE(SUM(r.damaged_quantity), 0)
+        FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
+        WHERE l.object_id = objects.object_id AND r.damage_status = 'quarantined') AS quarantined_quantity
+        FROM objects WHERE 1 = 1"""
     params: list[Any] = []
 
     if search.strip():
@@ -249,6 +252,16 @@ def update_object(payload: dict[str, Any]) -> dict[str, Any]:
 
     status = object_status(available_quantity, min_quantity)
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        outstanding = db.execute("""SELECT COALESCE(SUM(quantity - returned_quantity), 0)
+            FROM loans WHERE object_id = ? AND status = 'active'""", (object_id,)).fetchone()[0]
+        quarantined = db.execute("""SELECT COALESCE(SUM(r.damaged_quantity), 0)
+            FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
+            WHERE l.object_id = ? AND r.damage_status = 'quarantined'""", (object_id,)).fetchone()[0]
+        if available_quantity + outstanding + quarantined > total_quantity:
+            raise ValueError("Totalt antal måste täcka tillgängligt, utlånat och skadat antal i karantän.")
+        if (outstanding or quarantined) and is_consumable:
+            raise ValueError("En artikel med aktiva lån eller skador kan inte bli förbrukningsvara.")
         db.execute(
             """
             UPDATE objects
@@ -326,6 +339,11 @@ def delete_object(object_id: str) -> dict[str, Any]:
         raise ValueError("Objektet har aktiva lån och kan inte tas bort.")
 
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute("""SELECT 1 FROM loans l WHERE l.object_id = ? AND
+            (l.status = 'active' OR EXISTS (SELECT 1 FROM loan_returns r
+             WHERE r.loan_id = l.loan_id AND r.damage_status = 'quarantined'))""", (object_id,)).fetchone():
+            raise ValueError("Objektet har aktiva lån eller skador i karantän och kan inte tas bort.")
         db.execute("DELETE FROM loans WHERE object_id = ? AND status != 'active'", (object_id,))
         db.execute("DELETE FROM objects WHERE object_id = ?", (object_id,))
         db.execute(

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from backend.database import row
 
 
 def read_card_uid() -> str:
+    if os.environ.get("LOAN_SIMULATION") == "1":
+        raise ValueError("Fysisk kortläsare är avstängd i simuleringsmiljön. Välj en testperson manuellt.")
     try:
         from smartcard.CardRequest import CardRequest
         from smartcard.System import readers

@@ -1,7 +1,7 @@
 # Uppdates
 
-Nuvarande version: V1.6.0
-Senast uppdaterad: 2026-10-15
+Nuvarande version: V1.13.1
+Senast uppdaterad: 2026-10-23
 
 Den har filen anvands som projektlogg. Vid varje update:
 
@@ -14,6 +14,126 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.13.1 - 2026-10-23
+
+- Uppdateringsknappen och installationsprogrammets länkar pekar på SamuelMeyer1/LoanSystem.
+- Ny installationsfil för det separata distributionsrepot; ingen automatisk publicering eller ändring av kodrepots Git-koppling.
+
+## V1.13.0 - 2026-10-23
+
+- Första per-user Windows-installationsprogrammet med Python, Tk, SQLite, openpyxl och pyscard.
+- Separat serverstart i paketerad app, utan extern Python eller rekursiva startfönster.
+- Installerad app håller data utanför programfilerna och säkerhetskopierar före databasmigrering.
+- Uppgradering/avinstallation kräver stoppad app; användardata lämnas kvar.
+- Startfönstrets versionsknapp öppnar privata GitHub Releases i webbläsaren.
+  Ingen automatisk versionskontroll, nedladdning eller inbyggd GitHub-token.
+- Källkodens data, loggar och konton ingår aldrig i det nya Setup-paketet.
+- Verifierat: 93 Python-tester inklusive Tk-knapp/layout, backendkompilering,
+  fryst EXE utan extern Python i PATH, simulering/inloggning/statiska filer,
+  samt isolerad tyst installation, ominstallation och avinstallation med bevarade testdata.
+
+## V1.12.0 - 2026-10-22
+
+- Förenklad återlämning med valda antal, delreturer och sammanfattning av återlämnat/kvarvarande.
+- Skadeantal och beskrivning registreras per retur; skadade exemplar hålls i karantän.
+- Admin kan bekräfta reparation/återföring till lager eller permanent kassering.
+- Atomiska saldon, skydd mot dubbla delreturer, uppgraderingsmigrering och anpassad statistik/dataskydd.
+- Verifierat i isolerad webbläsarsimulering: delretur med skada, slutretur, reparation och kassering;
+  slutresultat 9 tillgängliga av 9 totalt, inga aktiva lån eller öppna skador. Svenska/engelska kontrollerade.
+- 84 Python-tester, tre Node-testfiler, fem JS-syntaxkontroller och backendkompilering godkända.
+
+## V1.11.2 - 2026-10-22
+
+- Låntagarregistreringen visar endast en obligatorisk kryssruta och en länk till dataskyddsinformationen.
+- Den stora panelen är borttagen i både profilformuläret och snabbregistreringen; texten följer valt språk.
+- Bekräftelsen registreras som tidigare, utan ändrade behörigheter eller nya avtalsvillkor.
+- Verifierat med frontend-tester och webbläsare: båda kvittenserna är cirka 39 px höga vid testad skrivbordsbredd.
+
+## V1.11.1 - 2026-10-22
+
+- Förenklat startfönstret till Lokalt, Nätverk och Simulering med kortare texter och egen ikon.
+- Tillagt skrivskyddad terminalpanel för serverlogg samt löpande status och uppmätt HTTP-svarstid.
+- HTTP-diagnostik visar metod, statuskod och behandlingstid utan personuppgifter från anropen.
+- Verifierat med 67 Python-tester, inloggningens frontend-test och faktisk fönsterkontroll i två storlekar.
+
+## V1.11.0 - 2026-10-22
+
+- Första uppgraderingsetappen: startfönster för databasval, lokal server, LAN och anslutning till befintlig server.
+- Ny isolerad simulering med separat databas, fejkdata, testkonton och blockerade externa utskick/kortläsare.
+- Startfönstret väntar på rätt server, visar databas/logg och kan stoppa sin egen process.
+- Inloggad Admin behåller nu sin behörighet även när anonym operatörsvy är aktiverad.
+- Verifierat med 60 Python-tester, tre frontend-testsviter, kompilering och isolerade startfönster-/webbläsartester.
+- Kategorier, förbättrad återlämning/felrapportering och Admin-notiser återstår till kommande etapper.
+
+## V1.10.6 - 2026-10-22
+
+- Visar versionsnumret diskret i nedre högra hörnet på Admin-inloggningspanelen.
+- Verifierat med UI-test och diffkontroll.
+
+## V1.10.5 - 2026-10-22
+
+- Komprimerat texten i kvittensen för dataskydd vid låntagarregistrering.
+- Detaljerad information visas nu först när informationsrutan öppnas.
+- Verifierat med frontend-test.
+
+## V1.10.4 - 2026-10-22
+
+- Operatörsvyn öppnas nu utan inloggning vid lokal loopback-start.
+- Admin och Superadmin kräver fortsatt autentisering; anonym operatör gäller inte LAN från loopback-start.
+- Verifierat med åtkomst- och UI-tester.
+
+## V1.10.3 - 2026-10-22
+
+- Dataskyddssidan laddas inte om när Admin-sessionen löper ut; administrationsdelen döljs i stället.
+- Verifierat med frontend-test, JavaScript-syntaxkontroll och webbläsarkontroll på LAN-sidan.
+
+## V1.10.2 - 2026-10-22
+
+- Dataskyddstext visas i en stabil, lättläst informationspanel i stället för monospaced text.
+- Kontakt för personuppgifter uppdaterad till Olof Samuelsson, olof.samuelsson@volvo.com.
+- Kontakt och fullständig information visas även i inloggning och låntagarbekräftelse.
+- Verifierat med frontend-tester. Åtkomsttestsviten kördes men hade två misslyckanden i LAN-felmeddelande och kontoförväntningar.
+
+## V1.10.1 - 2026-10-22
+
+- Tillagt opt-in för fasta lokala testkonton med lösenord från miljövariabler.
+- Kontona låses mot CLI-ändring/borttagning; LAN-start blockeras med kontona.
+- Verifierat med 28 åtkomsttester och Python-kompilering.
+
+## V1.10.0 - 2026-10-22
+
+- Ny låntagarprofil kräver att personen bekräftar att ha tagit del av låneanpassad dataskyddsinformation.
+- Bekräftelsetid sparas i profilen; redigering kräver inte ny bekräftelse och äldre profiler bakdateras inte.
+- Samma steg finns i Admins profilformulär och snabbregistrering vid utlåning.
+- Förtydligat att kvittensen inte är GDPR-samtycke eller rättslig grund.
+- Verifierat med 26 åtkomsttester, frontend-tester och Python-kompilering.
+
+## V1.9.1 - 2026-10-22
+
+- Toppfältets separata rollväljare ersatt av en samlad status/inloggningskontroll till vänster.
+- Operatörsvy och inloggad Admin/Systemadmin visas tydligt; knappen heter nu Logga in.
+- Verifierat med session-UI-test och befintliga frontend- och åtkomsttester.
+
+## V1.9.0 - 2026-10-22
+
+- Förnyad Admin-inloggning som högerställd panel i appens befintliga färgtema.
+- Dataskyddsinformation och länk flyttade från toppfältet till inloggningspanelen.
+- LAN-operatörsvyn ligger kvar bakom panelen; Admin-inloggning laddar om med rätt roll/data.
+- Verifierat med session-UI-test, befintliga frontend-tester och syntaxkontroll.
+
+## V1.8.0 - 2026-10-22
+
+- LAN-testbesökare får direkt en gemensam operatörsvy utan konto; Admin/Superadmin loggar in separat.
+- Delad operatörsvy omfattar alla låntagaruppgifter och operatörsåtgärder; endast fiktiva testdata.
+- Admin-inloggning kan öppnas från operatörsvyn. Verifiering pågår.
+
+## V1.7.0 - 2026-10-22
+
+- Lagt till ett uttryckligt LAN-testläge med privat IPv4-bindning; lokal loopback är fortfarande standard.
+- Värdhuvud tillåts endast för den konfigurerade adressen. Wildcard- och publika adresser avvisas.
+- Dokumenterat separat testdatabas, fiktiva uppgifter, brandvägg och riskerna med okrypterad HTTP.
+- Verifierat: 24 åtkomsttester och Python-kompilering godkända.
 
 ## V1.6.0 - 2026-10-15
 

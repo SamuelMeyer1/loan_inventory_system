@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 import threading
 import time
@@ -15,6 +16,8 @@ COOKIE = "loan_session"
 
 
 def create_account(username: str, password: str, role: str, user_id: str | None = None) -> None:
+    if row("SELECT username FROM local_test_accounts WHERE username = ?", (username,)):
+        raise ValueError("Det lokala testkontot är låst och kan inte ändras med kontoverktyget.")
     if role not in ("operator", "admin", "superadmin"):
         raise ValueError("Ogiltig roll.")
     if not username or len(username) > 80 or len(password) < 15 or len(password) > 256:
@@ -30,6 +33,28 @@ def create_account(username: str, password: str, role: str, user_id: str | None 
                       password_hash=excluded.password_hash, role=excluded.role,
                       user_id=excluded.user_id, revision=access_accounts.revision+1""",
                    (username, salt, digest, role, user_id))
+
+
+def initialize_local_test_accounts() -> None:
+    accounts = (
+        ("admin", os.environ.get("LOAN_LOCAL_ADMIN_PASSWORD", ""), "admin"),
+        ("superadmin", os.environ.get("LOAN_LOCAL_SUPERADMIN_PASSWORD", ""), "superadmin"),
+    )
+    if any(not password or len(password) > 256 for _, password, _ in accounts):
+        raise ValueError("Ange båda lokala testlösenorden i miljövariabler; lösenord får inte vara tomma.")
+    with connect() as db:
+        for username, password, role in accounts:
+            salt = secrets.token_hex(16)
+            digest = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
+            db.execute(
+                """INSERT INTO access_accounts (username, salt, password_hash, role, user_id)
+                   VALUES (?, ?, ?, ?, NULL)
+                   ON CONFLICT(username) DO UPDATE SET salt=excluded.salt,
+                   password_hash=excluded.password_hash, role=excluded.role,
+                   user_id=NULL, revision=access_accounts.revision+1""",
+                (username, salt, digest, role),
+            )
+            db.execute("INSERT OR IGNORE INTO local_test_accounts (username) VALUES (?)", (username,))
 
 
 class AccessState:

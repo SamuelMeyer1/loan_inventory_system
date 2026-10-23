@@ -57,6 +57,8 @@ def export_subject(user_id):
         user = _subject(db, user_id)
         return {"user": user,
                 "loans": [dict(r) for r in db.execute("SELECT * FROM loans WHERE user_id = ?", (user_id,))],
+                "returns_and_damage": [dict(r) for r in db.execute(
+                    "SELECT r.* FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id WHERE l.user_id = ?", (user_id,))],
                 "requests": [dict(r) for r in db.execute("SELECT * FROM loan_requests WHERE user_id = ?", (user_id,))],
                 "accounts": [dict(r) for r in db.execute("SELECT username, role FROM access_accounts WHERE user_id = ?", (user_id,))],
                 "security_audit": [dict(r) for r in db.execute("SELECT * FROM security_audit WHERE user_id = ?", (user_id,))],
@@ -71,16 +73,20 @@ def erase_subject(user_id, apply=False):
         user = _subject(db, user_id)
         active = db.execute("SELECT COUNT(*) FROM loans WHERE user_id = ? AND (status != 'returned' OR return_time IS NULL)", (user_id,)).fetchone()[0]
         pending = db.execute("SELECT COUNT(*) FROM loan_requests WHERE user_id = ? AND status != 'stocked'", (user_id,)).fetchone()[0]
+        damage = db.execute("""SELECT COUNT(*) FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
+            WHERE l.user_id = ? AND r.damage_status = 'quarantined'""", (user_id,)).fetchone()[0]
+        returns = db.execute("""SELECT COUNT(*) FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
+            WHERE l.user_id = ?""", (user_id,)).fetchone()[0]
         events = _legacy_events(db, user)
         counts = {table: db.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id = ?", (user_id,)).fetchone()[0]
                   for table in ("loans", "loan_requests", "access_accounts")}
-        result = {"counts": {**counts, "users": 1, "legacy_events_to_redact": len(events)},
-                  "blocked": bool(active or pending), "applied": False,
+        result = {"counts": {**counts, "loan_returns": returns, "users": 1, "legacy_events_to_redact": len(events)},
+                  "blocked": bool(active or pending or damage), "applied": False,
                   "warning": "Äldre fritext och externa kopior måste granskas separat. Loggträffar maskeras i sin helhet och kan innehålla andra personers uppgifter."}
         if not apply:
             return result
         if result["blocked"]:
-            raise ValueError("Avsluta aktiva lån och lagerför alla förfrågningar före radering. Verksamheten måste bedöma rätten till radering.")
+            raise ValueError("Avsluta aktiva lån, åtgärda skador och lagerför alla förfrågningar före radering. Verksamheten måste bedöma rätten till radering.")
         # Explicit deletion removes the current subject rows, rather than
         # claiming that reversible pseudonyms are anonymous.
         db.execute("DELETE FROM access_accounts WHERE user_id = ?", (user_id,))
@@ -112,13 +118,18 @@ def retention(apply=False, now=None):
              WHERE COALESCE(s.request_group_id,s.request_id)=COALESCE(r.request_group_id,r.request_id)
              AND (s.status != 'stocked' OR s.updated_at >= ?))""", (loan_cutoff, loan_cutoff))]
         request_set = set(requests)
-        loans = [r["loan_id"] for r in db.execute("SELECT loan_id, loan_request_id FROM loans WHERE status='returned' AND return_time < ?", (loan_cutoff,))
+        loans = [r["loan_id"] for r in db.execute("""SELECT loan_id, loan_request_id FROM loans l
+                 WHERE status='returned' AND return_time < ? AND NOT EXISTS
+                 (SELECT 1 FROM loan_returns r WHERE r.loan_id = l.loan_id
+                  AND (r.damage_status = 'quarantined' OR r.resolved_at >= ?))""", (loan_cutoff, loan_cutoff))
                  if r["loan_request_id"] is None or r["loan_request_id"] in request_set]
         loan_set = set(loans)
+        returns = sum(db.execute("SELECT COUNT(*) FROM loan_returns WHERE loan_id = ?", (loan_id,)).fetchone()[0]
+                      for loan_id in loans)
         requests = [request_id for request_id in requests if all(r[0] in loan_set for r in db.execute("SELECT loan_id FROM loans WHERE loan_request_id = ?", (request_id,)))]
         events = [r[0] for r in db.execute("SELECT event_id FROM events WHERE event_time < ?", (event_cutoff,))]
         access_events = [r[0] for r in db.execute("SELECT audit_id FROM security_audit WHERE event_time < ?", (event_cutoff,))]
-        result = {"counts": {"loans": len(loans), "loan_requests": len(requests), "events": len(events), "security_audit": len(access_events)}, "applied": False,
+        result = {"counts": {"loans": len(loans), "loan_returns": returns, "loan_requests": len(requests), "events": len(events), "security_audit": len(access_events)}, "applied": False,
                   "scope": "Avslutade lån/förfrågningar och gamla loggar i aktuell databas. Användarprofiler, externa kopior och fritext gallras separat."}
         if apply:
             for table, key, ids in (("loans", "loan_id", loans), ("loan_requests", "request_id", requests), ("events", "event_id", events), ("security_audit", "audit_id", access_events)):

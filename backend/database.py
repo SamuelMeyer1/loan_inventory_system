@@ -6,10 +6,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from app_runtime import backup_before_migration, default_database
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT_DIR / "data"
-DATABASE_PATH = Path(os.environ.get("LOAN_DATABASE_PATH", str(DATA_DIR / "inventory.db")))
+DATABASE_PATH = Path(os.environ.get("LOAN_DATABASE_PATH", str(default_database())))
 
 
 @contextmanager
@@ -26,6 +27,7 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def initialize_database() -> None:
+    backup_before_migration(DATABASE_PATH)
     with connect() as db:
         db.executescript(
             """
@@ -41,6 +43,9 @@ def initialize_database() -> None:
             CREATE TABLE IF NOT EXISTS privacy_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS local_test_accounts (
+                username TEXT PRIMARY KEY
             );
             CREATE TABLE IF NOT EXISTS security_audit (
                 audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +97,7 @@ def initialize_database() -> None:
                 role TEXT NOT NULL DEFAULT 'operator',
                 created_at TEXT,
                 updated_at TEXT,
+                privacy_notice_acknowledged_at TEXT,
                 active INTEGER NOT NULL DEFAULT 1,
                 borrow_override INTEGER NOT NULL DEFAULT 0
             );
@@ -117,6 +123,20 @@ def initialize_database() -> None:
                 event_type TEXT NOT NULL,
                 message TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS loan_returns (
+                return_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                loan_id INTEGER NOT NULL REFERENCES loans(loan_id) ON DELETE CASCADE,
+                quantity INTEGER NOT NULL CHECK(quantity > 0),
+                damaged_quantity INTEGER NOT NULL DEFAULT 0 CHECK(damaged_quantity >= 0 AND damaged_quantity <= quantity),
+                damage_description TEXT NOT NULL DEFAULT '',
+                damage_status TEXT CHECK(damage_status IN ('quarantined', 'repaired', 'discarded')),
+                returned_at TEXT NOT NULL,
+                resolved_at TEXT,
+                CHECK((damaged_quantity = 0 AND damage_status IS NULL) OR
+                      (damaged_quantity > 0 AND damage_status IS NOT NULL))
+            );
+            CREATE INDEX IF NOT EXISTS loan_returns_loan ON loan_returns(loan_id);
 
             CREATE TRIGGER IF NOT EXISTS minimize_new_event_text
             AFTER INSERT ON events WHEN NEW.event_type != 'privacy'
@@ -201,6 +221,7 @@ def initialize_database() -> None:
             "role": "TEXT NOT NULL DEFAULT 'operator'",
             "created_at": "TEXT",
             "updated_at": "TEXT",
+            "privacy_notice_acknowledged_at": "TEXT",
             "borrow_override": "INTEGER NOT NULL DEFAULT 0",
         }
         for column_name, column_type in missing_user_columns.items():
@@ -213,10 +234,17 @@ def initialize_database() -> None:
             "project_number": "TEXT",
             "loan_request_id": "INTEGER",
             "last_reminder_sent_at": "TEXT",
+            "returned_quantity": "INTEGER NOT NULL DEFAULT 0 CHECK(returned_quantity >= 0 AND returned_quantity <= quantity)",
         }
         for column_name, column_type in missing_loan_columns.items():
             if column_name not in loan_columns:
                 db.execute(f"ALTER TABLE loans ADD COLUMN {column_name} {column_type}")
+
+        if "returned_quantity" not in loan_columns:
+            db.execute("UPDATE loans SET returned_quantity = quantity WHERE status = 'returned'")
+            db.execute("""INSERT INTO loan_returns (loan_id, quantity, returned_at)
+                          SELECT loan_id, quantity, COALESCE(return_time, checkout_time)
+                          FROM loans WHERE status = 'returned'""")
 
         request_columns = [column["name"] for column in db.execute("PRAGMA table_info(loan_requests)").fetchall()]
         missing_request_columns = {

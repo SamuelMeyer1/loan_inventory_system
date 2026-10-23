@@ -216,20 +216,13 @@ async function sendPickupReadyEmail(requestId, button = null) {
 }
 
 async function returnItem(loanId) {
-  try {
-    if (!loanId) {
-      showToast("Välj ett aktivt lån att återlämna.");
-      return;
-    }
-    const data = await api("/api/return", {
-      method: "POST",
-      body: JSON.stringify({ identifier: String(loanId) }),
-    });
-    showToast(t("toast.loanReturned", { id: data.loan_id }));
-    await refreshAll();
-  } catch (error) {
-    showToast(error.message);
-  }
+  const loan = state.loans.find((item) => item.loan_id === loanId);
+  if (!loan) return;
+  setView("return");
+  selectReturnUser(loan.user_id);
+  const checkbox = $(`[data-return-select="${loanId}"]`);
+  if (checkbox) checkbox.checked = true;
+  updateReturnButtons();
 }
 
 async function saveUser(event) {
@@ -248,6 +241,9 @@ async function saveUser(event) {
       role: $("#newUserRole").value,
       active: $("#newUserActive").checked,
     };
+    if (!state.editingUserId) {
+      payload.privacy_notice_acknowledged = $("#newUserPrivacyAcknowledged").checked;
+    }
     if (state.editingUserId) payload.user_id = state.editingUserId;
 
     const data = await api("/api/users", {
@@ -277,6 +273,8 @@ function startEditUser(userId) {
   syncDepartmentFromGroup("#newUserDepartmentName", "#newUserDepartment");
   $("#newUserRole").value = user.role || "operator";
   $("#newUserActive").checked = user.active !== 0;
+  $("#newUserPrivacyAcknowledgement").hidden = true;
+  $("#newUserPrivacyAcknowledged").required = false;
   $("#saveUserButton").textContent = "Spara ändringar";
   $("#cancelUserEditButton").style.display = "block";
   showAdminSettingsSection("create-user");
@@ -288,6 +286,8 @@ function resetUserForm() {
   $("#addUserForm").reset();
   $("#newUserDepartment").readOnly = false;
   $("#newUserActive").checked = true;
+  $("#newUserPrivacyAcknowledgement").hidden = false;
+  $("#newUserPrivacyAcknowledged").required = true;
   $("#saveUserButton").textContent = "Skapa användare";
   $("#cancelUserEditButton").style.display = "none";
 }
@@ -505,6 +505,7 @@ async function saveQuickUser(event) {
         department_name: $("#quickUserDepartmentName").value,
         role: "operator",
         active: true,
+        privacy_notice_acknowledged: $("#quickUserPrivacyAcknowledged").checked,
       }),
     });
     showToast(t("toast.userCreated", { id: data.user_id }));
@@ -560,7 +561,7 @@ async function readSmartcardUid() {
 
 function updateAutoUserCardScan() {
   const checkoutIsActive = $("#checkoutView")?.classList.contains("active");
-  if (checkoutIsActive && state.role !== "operator") {
+  if (checkoutIsActive && state.role !== "operator" && !window.loanRuntime?.simulation) {
     startAutoUserCardScan();
   } else {
     stopAutoUserCardScan();
@@ -831,16 +832,55 @@ async function returnSelectedLoans(all = false) {
   const loanIds = all ? state.loans.filter((loan) => loan.user_id === userId).map((loan) => loan.loan_id)
     : [...document.querySelectorAll("[data-return-select]:checked")].map((input) => Number(input.dataset.returnSelect));
   if (!userId || !loanIds.length) return;
-  state.returnBusy = true;
-  updateReturnButtons();
   try {
-    await api("/api/return", { method: "POST", body: JSON.stringify({ user_id: userId, loan_ids: loanIds }) });
-    showToast(state.language === "en" ? "Selected articles returned." : "Valda artiklar är återlämnade.");
+    const items = loanIds.map((loanId) => {
+      const loan = state.loans.find((entry) => entry.loan_id === loanId && entry.user_id === userId);
+      if (!loan) throw new Error(t("return.invalid"));
+      const remaining = loan.remaining_quantity ?? loan.quantity;
+      const quantity = all ? remaining : Number($(`[data-return-quantity="${loanId}"]`).value);
+      const damaged = Number($(`[data-return-damaged="${loanId}"]`).value);
+      const description = $(`[data-return-description="${loanId}"]`).value.trim();
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > remaining ||
+          !Number.isInteger(damaged) || damaged < 0 || damaged > quantity ||
+          (damaged > 0 && !description) || (damaged === 0 && description) || description.length > 2000) {
+        throw new Error(t("return.invalid"));
+      }
+      return { loan_id: loanId, quantity, damaged_quantity: damaged, damage_description: description,
+        expected_returned_quantity: loan.returned_quantity || 0 };
+    });
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    const damaged = items.reduce((sum, item) => sum + item.damaged_quantity, 0);
+    if (!confirm(t("return.confirm", { quantity, damaged }))) return;
+    state.returnBusy = true;
+    updateReturnButtons();
+    const data = await api("/api/return", { method: "POST", body: JSON.stringify({ user_id: userId, items }) });
+    state.returnSummary = { ...data, user_id: userId };
+    renderReturnSummary();
+    showToast(t("return.saved"));
     await refreshAll();
   } catch (error) {
     showToast(error.message);
   } finally {
     state.returnBusy = false;
     updateReturnButtons();
+  }
+}
+
+async function resolveDamage(returnId, resolution) {
+  if (state.role === "operator" || state.damageBusy) return;
+  const item = state.damagedReturns.find((entry) => entry.return_id === returnId);
+  if (!item || !confirm(t(`damage.confirm.${resolution}`, { quantity: item.damaged_quantity, name: item.object_name }))) return;
+  state.damageBusy = true;
+  renderDamagedReturns();
+  try {
+    await api("/api/damaged-returns/resolve", { method: "POST",
+      body: JSON.stringify({ return_id: returnId, resolution, confirmed: true }) });
+    showToast(t("damage.saved"));
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.damageBusy = false;
+    renderDamagedReturns();
   }
 }

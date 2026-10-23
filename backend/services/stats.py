@@ -8,7 +8,7 @@ from backend.database import row, rows
 def dashboard_stats() -> dict[str, int]:
     object_count = row("SELECT COUNT(*) AS value FROM objects")
     loaned_count = row("SELECT COUNT(*) AS value FROM loans WHERE status = 'active'")
-    loaned_quantity = row("SELECT COALESCE(SUM(quantity), 0) AS value FROM loans WHERE status = 'active'")
+    loaned_quantity = row("SELECT COALESCE(SUM(quantity - returned_quantity), 0) AS value FROM loans WHERE status = 'active'")
     overdue_count = row(
         """
         SELECT COUNT(*) AS value
@@ -27,6 +27,7 @@ def dashboard_stats() -> dict[str, int]:
         "low_stock": int(low_stock_count["value"] if low_stock_count else 0),
         "jobs": int(jobs_count["value"] if jobs_count else 0),
         "consumable_reports": int(consumable_count["value"] if consumable_count else 0),
+        "quarantined_quantity": int(row("SELECT COALESCE(SUM(damaged_quantity), 0) AS value FROM loan_returns WHERE damage_status = 'quarantined'")["value"]),
     }
 
 
@@ -68,17 +69,16 @@ def statistics_data() -> dict[str, Any]:
         ),
         "returns_per_month": rows(
             """
-            SELECT strftime('%Y-%m', return_time) AS label,
-                   COUNT(*) AS returns
-            FROM loans
-            WHERE return_time IS NOT NULL
-            GROUP BY strftime('%Y-%m', return_time)
+            SELECT strftime('%Y-%m', returned_at) AS label,
+                   COUNT(*) AS returns, SUM(quantity) AS quantity
+            FROM loan_returns
+            GROUP BY strftime('%Y-%m', returned_at)
             ORDER BY label
             """
         ),
         "top_borrowers": rows(
             """
-            SELECT u.name AS label, COALESCE(SUM(l.quantity), 0) AS value
+            SELECT u.name AS label, COALESCE(SUM(l.quantity - l.returned_quantity), 0) AS value
             FROM loans l
             JOIN users u ON u.user_id = l.user_id
             WHERE l.status = 'active'

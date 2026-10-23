@@ -6,6 +6,9 @@ const state = {
   objects: [],
   loanCart: [],
   returnBusy: false,
+  returnSummary: null,
+  damageBusy: false,
+  damagedReturns: [],
   users: [],
   groups: [],
   loans: [],
@@ -100,7 +103,7 @@ function setView(view) {
 }
 
 async function refreshAll() {
-  const [stats, statistics, objects, users, groups, loans, jobs, consumableReports, events, systemSettings] = await Promise.all([
+  const [stats, statistics, objects, users, groups, loans, jobs, consumableReports, events, systemSettings, damagedReturns] = await Promise.all([
     api("/api/stats"),
     state.role === "operator" ? Promise.resolve({}) : api("/api/statistics"),
     api("/api/objects"),
@@ -111,6 +114,7 @@ async function refreshAll() {
     state.role === "operator" ? Promise.resolve([]) : api("/api/consumable-reports"),
     state.role === "superadmin" ? api("/api/events?limit=100") : Promise.resolve([]),
     api("/api/system-settings"),
+    state.role === "operator" ? Promise.resolve([]) : api("/api/damaged-returns"),
   ]);
 
   state.objects = objects;
@@ -122,6 +126,7 @@ async function refreshAll() {
   state.consumableReports = consumableReports;
   state.events = events;
   state.systemSettings = systemSettings;
+  state.damagedReturns = damagedReturns;
 
   renderStats(stats);
   renderUsers();
@@ -136,6 +141,7 @@ async function refreshAll() {
   renderDashboardTips();
   renderJobs();
   renderConsumableReports();
+  renderDamagedReturns();
   renderEvents();
   renderSystemSettings();
   showAdminSettingsSection(document.querySelector(".admin-settings-nav-button.active")?.dataset.adminSection || "add-object");
@@ -685,7 +691,7 @@ function renderObjects() {
       <td>${escapeHtml(item.article_number || "")}</td>
       <td>${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.supplier_article_number || "")}</td>
-      <td>${item.available_quantity} / ${item.total_quantity}</td>
+      <td>${item.available_quantity} / ${item.total_quantity}${item.quarantined_quantity ? `<small class="request-reference">${t("damage.quarantined")}: ${item.quarantined_quantity}</small>` : ""}</td>
       <td>${item.min_quantity}</td>
       <td>${escapeHtml(item.location)}</td>
       <td>${escapeHtml(item.tornado_id)}</td>
@@ -722,7 +728,7 @@ function renderAdminObjectsTable() {
       <td>${escapeHtml(item.object_id)}</td>
       <td>${escapeHtml(item.name)}</td>
       <td>${escapeHtml(item.category)}</td>
-      <td>${item.available_quantity} / ${item.total_quantity}</td>
+      <td>${item.available_quantity} / ${item.total_quantity}${item.quarantined_quantity ? `<small class="request-reference">${t("damage.quarantined")}: ${item.quarantined_quantity}</small>` : ""}</td>
       <td>${statusBadge(item.status)}</td>
       <td>
         <button class="table-action-button" type="button" data-admin-edit-object="${escapeHtml(item.object_id)}">Redigera</button>
@@ -849,7 +855,7 @@ function renderLoans() {
       loan.user_department,
       loan.engine_id,
       loan.project_number,
-      loan.quantity,
+      loan.remaining_quantity ?? loan.quantity,
       formatTime(loan.checkout_time),
       formatTime(loan.due_time),
       formatTime(loan.last_reminder_sent_at),
@@ -868,7 +874,7 @@ function renderLoans() {
       <td>${escapeHtml(loan.user_department || "")}</td>
       <td>${escapeHtml(loan.engine_id || "")}</td>
       <td>${escapeHtml(loan.project_number || "")}</td>
-      <td>${loan.quantity}</td>
+      <td>${loan.remaining_quantity ?? loan.quantity}</td>
       <td>${formatTime(loan.checkout_time)}</td>
       <td>${formatTime(loan.due_time)}</td>
       <td>${statusBadge(loan.overdue ? "Sen" : "Aktiv")}</td>
@@ -1569,6 +1575,7 @@ function bindEvents() {
       renderCheckoutUserDetails();
       renderPickupItems();
       renderMyLoans();
+      renderReturnLoans(true);
     });
   });
   document.querySelectorAll("[data-view-target]").forEach((button) => {

@@ -6,6 +6,22 @@ const source = (name) => fs.readFileSync(path.join(__dirname, "../frontend/js", 
 const tick = () => new Promise(setImmediate);
 
 async function main() {
+  const privacyPage = fs.readFileSync(path.join(__dirname, "../frontend/privacy.html"), "utf8");
+  const appPage = fs.readFileSync(path.join(__dirname, "../frontend/index.html"), "utf8");
+  assert.match(privacyPage, /olof\.samuelsson@volvo\.com/);
+  assert.match(privacyPage, /class="privacy-notice"/);
+  assert.match(appPage, /id="newUserPrivacyAcknowledged" type="checkbox" required/);
+  assert.match(appPage, /id="quickUserPrivacyAcknowledged" type="checkbox" required/);
+  assert.match(appPage, /olof\.samuelsson@volvo\.com/);
+  assert.doesNotMatch(appPage, /<details open>/);
+  for (const prefix of ["newUser", "quickUser"]) {
+    const section = appPage.match(new RegExp(`<section[^>]+id="${prefix}PrivacyAcknowledgement">([\\s\\S]*?)</section>`))[1];
+    assert.equal((section.match(/type="checkbox"/g) || []).length, 1);
+    assert.doesNotMatch(section, /<details|<small|<p[ >]|acknowledgement-heading/);
+    assert.match(section, /href="\/privacy.html" target="_blank" rel="noopener"/);
+    assert.match(section, /Jag har läst dataskyddsinformationen\./);
+  }
+
   const sent = [];
   const apiContext = vm.createContext({
     window: { loanSession: { csrf: "test-csrf" } },
@@ -27,10 +43,11 @@ async function main() {
   };
   const requests = [];
   const timers = [];
+  let reloads = 0;
   const context = vm.createContext({
     document: { getElementById: node },
-    location: { href: "", reload() {} },
-    setTimeout: (callback, delay) => timers.push(delay),
+    location: { href: "", reload() { reloads += 1; } },
+    setTimeout: (callback, delay) => timers.push({ callback, delay }),
     fetch: async (url, options = {}) => {
       requests.push({ url, options });
       let data;
@@ -43,7 +60,7 @@ async function main() {
   vm.runInContext(source("privacy.js"), context);
   await tick();
   assert.equal(node("privacyAdmin").hidden, false);
-  assert.equal(timers[0], 42000, "Use remaining server lifetime, not a new 30-minute window");
+  assert.equal(timers[0].delay, 42000, "Use remaining server lifetime, not a new 30-minute window");
   node("subjectId").value = "test-subject";
   await node("previewErase").onclick();
   assert.equal(node("applyErase").disabled, true);
@@ -70,6 +87,9 @@ async function main() {
   assert.deepEqual(JSON.parse(deletion.options.body), { user_id: "other-subject", confirm: "DELETE" });
   assert.equal(deletion.options.headers["X-CSRF-Token"], "test-csrf");
   assert.equal(node("applyErase").disabled, true, "Prevent repeat submission");
+  timers[0].callback();
+  assert.equal(node("privacyAdmin").hidden, true, "Hide expired admin controls without reloading the page");
+  assert.equal(reloads, 0, "The public privacy page must not reload when the admin session expires");
   console.log("Privacy UI confirmation and API session checks passed (simulated DOM; not a browser smoke test).");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
