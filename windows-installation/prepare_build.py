@@ -6,6 +6,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from app_version import VERSION
+from app_icon import icon_ico
 
 if sys.platform != "win32" or platform.machine() not in ("AMD64", "x86_64"):
     raise SystemExit("Build requires Windows x64 Python.")
@@ -27,3 +28,6 @@ text = f"""VSVersionInfo(
 )
 """
 (ROOT / "windows-installation" / "version-info.txt").write_text(text, encoding="utf-8")
+icon_path = ROOT / "build" / "windows" / "loan-inventory.ico"
+icon_path.parent.mkdir(parents=True, exist_ok=True)
+icon_path.write_bytes(icon_ico())

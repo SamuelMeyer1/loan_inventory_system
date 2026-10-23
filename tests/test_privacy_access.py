@@ -308,7 +308,7 @@ class PrivacyAccessTest(unittest.TestCase):
                 patch("backend.server.initialize_database"), \
                 patch("backend.server.ThreadingHTTPServer", return_value=server) as create_server:
             run_server("192.168.1.25")
-        create_server.assert_called_once_with(("192.168.1.25", 8000), AppHandler)
+        create_server.assert_called_once_with(("192.168.1.25", 8000), AppHandler, bind_and_activate=False)
         self.assertEqual(server.allowed_hosts, {"192.168.1.25:8000"})
         self.assertTrue(server.anonymous_operator)
 

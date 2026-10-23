@@ -18,6 +18,7 @@ from urllib.request import ProxyHandler, build_opener
 
 from app_runtime import default_database, is_frozen, storage_directory
 from app_version import RELEASES_URL, VERSION
+from app_icon import icon_png
 
 ROOT = Path(__file__).resolve().parent
 MODES = {
@@ -29,7 +30,7 @@ MODES = {
 
 def probe_server(url: str, instance_id: str) -> float:
     started = time.perf_counter()
-    with build_opener(ProxyHandler({})).open(url + "api/runtime", timeout=1) as response:
+    with build_opener(ProxyHandler({})).open(url + "api/runtime", timeout=5) as response:
         payload = json.load(response)
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict) or data.get("instance_id") != instance_id:
@@ -104,10 +105,7 @@ class Launcher:
         self.root.title(f"Starta Loan Inventory · {VERSION}")
         self.root.geometry("660x680")
         self.root.minsize(600, 650)
-        self.icon = tk.PhotoImage(width=32, height=32)
-        self.icon.put("#2f6f8f", to=(0, 0, 32, 32))
-        for top in (6, 14, 22):
-            self.icon.put("#ffffff", to=(6, top, 26, top + 4))
+        self.icon = tk.PhotoImage(data=icon_png(32), format="png")
         self.root.iconphoto(True, self.icon)
         self.storage = storage_directory()
         self.process: subprocess.Popen | None = None
@@ -321,7 +319,7 @@ class Launcher:
             self.last_health_error = ""
             self.probe_pending = False
             self.next_probe = 0
-            self.deadline = time.monotonic() + 30
+            self.deadline = time.monotonic() + 60
             self.start_button.configure(state="disabled")
             self.stop_button.configure(state="normal")
             self.status.set("Startar...")
@@ -369,7 +367,7 @@ class Launcher:
                     self.last_health_error = error
         if self.deadline and time.monotonic() >= self.deadline:
             self.stop()
-            self.report_error(f"Servern svarade inte inom 30 sekunder. Se loggen:\n{self.log_path}")
+            self.report_error(f"Servern svarade inte inom 60 sekunder. Se loggen:\n{self.log_path}")
             return
         if not self.probe_pending and time.monotonic() >= self.next_probe:
             self.start_probe()

@@ -1,8 +1,8 @@
-# Windows Setup – V1.13.0
+# Windows Setup – V1.13.2
 
 ## Installera och starta
 
-Kör `LoanInventory-1.13.0-Setup.exe` på Windows 10/11 x64. Python, Tkinter,
+Kör `LoanInventory-1.13.2-Setup.exe` på Windows 10/11 x64. Python, Tkinter,
 SQLite, openpyxl och pyscard följer med. Ingen separat Python-installation
 eller administratörsbehörighet behövs. Kortläsare kan fortfarande behöva
 tillverkarens drivrutin; hårdvara ingår inte i verifieringen.
@@ -14,6 +14,14 @@ fiktiva data och `admin/admin` eller `superadmin/superadmin`.
 Ingen riktig databas eller något befintligt konto följer med installeraren.
 Installeraren är osignerad: Windows/SmartScreen kan varna. Följ organisationens
 regler; kringgå inte blockerad programinstallation.
+
+V1.13.2 har en egen blå lagerikon med enbart boxen i startfönstret, programmet,
+Setup och genvägarna. Installera den nya versionen för att ersätta Python-ikonen.
+Serverporten reserveras före databasstart men börjar lyssna först när starten
+är klar. Startfönstret väntar upp till 60 sekunder och varje hälsokontroll får
+5 sekunder. En avbruten svarsskrivning loggas kort utan nytt 500-svar.
+En låneändring kan redan ha sparats när anslutningen bryts; kontrollera listan
+innan du försöker samma åtgärd igen.
 
 ## Egen databas och konton
 
@@ -38,7 +46,7 @@ företags-/GDPR-lösning; se `dataskydd.md` bredvid detta dokument i installerad
 
 **Öppna versionssidan i webbläsaren** öppnar enbart
 <https://github.com/SamuelMeyer1/loan_inventory_system/releases>.
-Repo är privat: logga in i webbläsaren med ett GitHub-konto som har åtkomst.
+Om repo är privat: logga in i webbläsaren med ett GitHub-konto som har åtkomst.
 Knappen kontrollerar inte om en ny version finns och laddar inte ned eller
 installerar något. Ingen GitHub-token finns i appen. Om ingen release har
 publicerats finns ännu inget att hämta där.
@@ -79,12 +87,14 @@ Kräver Windows x64, Python 3.13 med Tk och Inno Setup 6 (officiell nedladdning:
 
 Skriptet bygger en isolerad `build\windows\venv` från
 `requirements-build.txt`, en PyInstaller **onedir** i `dist\LoanInventory`,
-kontrollerar paketet och kompilerar `dist\installer\LoanInventory-1.13.0-Setup.exe`.
+kontrollerar paketet och kompilerar `dist\installer\LoanInventory-1.13.2-Setup.exe`.
 Det ändrar inte installerade Python-paket i utvecklingsmiljön.
 Första bygget behöver nätåtkomst till PyPI; installeraren behöver inte nätet.
 Inno Setup måste installeras separat; byggskriptet hämtar inga okända verktyg.
 `app_version.py` är källa för version i EXE och Setup. Bygget avvisar avvikande
 frontend-/versionslogg. Bumpa även dessa två synliga versionssträngar.
+`app_icon.py` är gemensam källa för Tk-ikonen och den flerstorleks-ICO som
+`prepare_build.py` genererar under `build\windows` för EXE och Setup.
 
 `LoanInventory.spec` har en uttrycklig resurslista. Varken `data`, lokala
 preferenser, konton, loggar, hela repo-roten eller `frontend/sample-images/real`
@@ -101,7 +111,7 @@ $env:TMP = $env:TEMP
 .\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory
 # Testpaket med egen AppId, utan genvägar eller avinstallationsregistrering:
 .\windows-installation\Build-Setup.ps1 -Python "C:\sökväg\till\python.exe" -TestInstall
-.\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory --installer dist\installer\LoanInventory-1.13.0-TestSetup.exe
+.\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory --installer dist\installer\LoanInventory-1.13.2-TestSetup.exe
 ```
 
 `-TestInstall` bygger separat `*-TestSetup.exe` med annan AppId, utan genvägar,

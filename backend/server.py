@@ -29,10 +29,18 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
         self.response_status = "-"
         try:
             super().dispatch(method)
+        except ConnectionError:
+            self.report_disconnect()
         finally:
             if os.environ.get("LOAN_SERVER_DIAGNOSTICS") == "1":
                 elapsed = (time.perf_counter() - started) * 1000
                 print(f"[HTTP] {method} {self.response_status} {elapsed:.1f} ms", flush=True)
+
+    def report_disconnect(self) -> None:
+        self.close_connection = True
+        self.response_status = "DISCONNECTED"
+        print("[HTTP] Anslutningen avbröts innan svaret kunde levereras. "
+              "Begäran skickas inte om automatiskt.", flush=True)
 
     def log_request(self, code="-", size="-"):
         # Exclude URLs, headers, IP addresses and payloads from diagnostics.
@@ -279,8 +287,11 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.end_headers()
+            self.wfile.write(body)
+        except ConnectionError:
+            self.report_disconnect()
 
     def log_message(self, format: str, *args) -> None:
         pass  # Do not write IP addresses, query strings or submitted identifiers to stdout.
@@ -323,8 +334,10 @@ def run_server(host: str | None = None, port: int = 8000) -> None:
     fixed_test_credentials = os.environ.get("LOAN_LOCAL_FIXED_TEST_CREDENTIALS") == "1"
     if fixed_test_credentials and anonymous_operator:
         raise ValueError("Fasta lokala testinloggningar får inte användas i LAN-läge.")
-    server = ThreadingHTTPServer((host, port), AppHandler)
+    server = ThreadingHTTPServer((host, port), AppHandler, bind_and_activate=False)
     try:
+        # Reserve the port now, but do not queue clients until startup is complete.
+        server.server_bind()
         initialize_database()
         if anonymous_operator and row("SELECT username FROM local_test_accounts LIMIT 1"):
             raise ValueError("Databasen innehåller låsta lokala testkonton och får inte användas i LAN-läge.")
@@ -341,6 +354,7 @@ def run_server(host: str | None = None, port: int = 8000) -> None:
         server.local_operator = host in ("127.0.0.1", "localhost")
         server.simulation = simulation
         server.instance_id = os.environ.get("LOAN_INSTANCE_ID", "")
+        server.server_activate()
         print(f"Loan Inventory System running at http://{host}:{server.server_port}", flush=True)
         print("Press Ctrl+C to stop.")
         server.serve_forever()

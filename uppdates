@@ -1,6 +1,6 @@
 # Uppdates
 
-Nuvarande version: V1.13.0
+Nuvarande version: V1.13.2
 Senast uppdaterad: 2026-10-23
 
 Den har filen anvands som projektlogg. Vid varje update:
@@ -14,6 +14,18 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.13.2 - 2026-10-23
+
+- Förenklad programikon: centrerad lagerbox utan pil i startfönstret, programmet och installationen.
+
+## V1.13.1 - 2026-10-23
+
+- Servern börjar lyssna först när databas och konton är färdigstartade.
+- Avbrutna svar loggas kort utan att försöka skicka ett nytt 500-svar på samma anslutning.
+- Startkontrollen tillåter längre svarstid och upp till 60 sekunders start.
+- Egen lagerikon för startfönstret, EXE-filerna, installationen och genvägarna.
+- Paketet är fortfarande osignerat; Edge-/SmartScreen-varningar löses inte av dessa ändringar.
 
 ## V1.13.0 - 2026-10-23
 

@@ -31,6 +31,7 @@ OutputBaseFilename=LoanInventory-{#AppVersion}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\build\windows\loan-inventory.ico
 UninstallDisplayIcon={app}\LoanInventory.exe
 AppMutex=Local\LoanInventorySystem.Running
 CloseApplications=no

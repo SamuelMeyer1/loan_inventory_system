@@ -36,8 +36,10 @@ a = Analysis(
 pyz = PYZ(a.pure)
 gui = EXE(pyz, a.scripts, [], exclude_binaries=True, name="LoanInventory",
           debug=False, bootloader_ignore_signals=False, strip=False, upx=False,
+          icon=str(root / "build" / "windows" / "loan-inventory.ico"),
           console=False, version=str(Path(SPECPATH) / "version-info.txt"))
 admin = EXE(pyz, a.scripts, [], exclude_binaries=True, name="LoanInventoryAdmin",
             debug=False, bootloader_ignore_signals=False, strip=False, upx=False,
+            icon=str(root / "build" / "windows" / "loan-inventory.ico"),
             console=True, version=str(Path(SPECPATH) / "version-info.txt"))
 coll = COLLECT(gui, admin, a.binaries, a.datas, strip=False, upx=False, name="LoanInventory")

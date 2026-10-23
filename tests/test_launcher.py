@@ -89,7 +89,7 @@ class LauncherConfigTest(unittest.TestCase):
                 patch("launcher.time.perf_counter", side_effect=[10, 10.012]):
             opener.return_value.open.return_value = io.BytesIO(b'{"data":{"instance_id":"test"}}')
             self.assertAlmostEqual(probe_server("http://127.0.0.1:8000/", "test"), 12)
-            opener.return_value.open.assert_called_once_with("http://127.0.0.1:8000/api/runtime", timeout=1)
+            opener.return_value.open.assert_called_once_with("http://127.0.0.1:8000/api/runtime", timeout=5)
         for data in ({"data": {"instance_id": "other"}}, {"data": []}, []):
             with self.subTest(data=data), patch("launcher.build_opener") as opener:
                 opener.return_value.open.return_value = io.BytesIO(json.dumps(data).encode())

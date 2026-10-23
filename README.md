@@ -8,9 +8,9 @@ Backend använder endast Python standardbibliotek:
 - `sqlite3` för databas
 - `json` för API-svar
 
-## Windows-installationsprogram (V1.13.0)
+## Windows-installationsprogram (V1.13.2)
 
-`LoanInventory-1.13.0-Setup.exe` innehåller Python, Tk och nödvändiga bibliotek.
+`LoanInventory-1.13.2-Setup.exe` innehåller Python, Tk och nödvändiga bibliotek.
 Installeras per användare, utan separat Python. Data och inställningar ligger
 utanför programmappen och lämnas kvar vid uppgradering/avinstallation.
 Paketerad app säkerhetskopierar befintlig databas före migration.
