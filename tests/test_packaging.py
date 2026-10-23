@@ -7,18 +7,11 @@ import unittest
 from unittest.mock import patch
 
 import app_runtime
-from app_version import RELEASES_URL, VERSION
+from app_version import VERSION
 from launcher import prepare_server
 
 
 class PackagedRuntimeTest(unittest.TestCase):
-    def test_distribution_links_target_release_repository(self):
-        self.assertEqual(RELEASES_URL, "https://github.com/SamuelMeyer1/LoanSystem/releases")
-        root = Path(__file__).resolve().parents[1]
-        installer = (root / "windows-installation" / "LoanInventory.iss").read_text(encoding="utf-8")
-        self.assertIn(f"AppUpdatesURL={RELEASES_URL}", installer)
-        self.assertIn("AppPublisherURL=https://github.com/SamuelMeyer1/LoanSystem\n", installer)
-
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

@@ -1,7 +1,7 @@
 LOAN INVENTORY SYSTEM - WINDOWS 10
 ==================================
 
-NYTT SETUP.EXE (V1.13.1)
+NYTT SETUP.EXE (V1.13.0)
 Se SETUP.md for den nya per-user-installeraren med paketerad Python.
 Bygg med Build-Setup.ps1. Den inkluderar aldrig befintliga databaser.
 Instruktionerna nedan galler ENDAST det aldre offline-kallkodspaketet.

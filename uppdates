@@ -1,6 +1,6 @@
 # Uppdates
 
-Nuvarande version: V1.13.1
+Nuvarande version: V1.13.0
 Senast uppdaterad: 2026-10-23
 
 Den har filen anvands som projektlogg. Vid varje update:
@@ -14,11 +14,6 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
-
-## V1.13.1 - 2026-10-23
-
-- Uppdateringsknappen och installationsprogrammets länkar pekar på SamuelMeyer1/LoanSystem.
-- Ny installationsfil för det separata distributionsrepot; ingen automatisk publicering eller ändring av kodrepots Git-koppling.
 
 ## V1.13.0 - 2026-10-23
 

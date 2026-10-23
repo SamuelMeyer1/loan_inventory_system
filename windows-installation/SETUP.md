@@ -1,8 +1,8 @@
-# Windows Setup – V1.13.1
+# Windows Setup – V1.13.0
 
 ## Installera och starta
 
-Kör `LoanInventory-1.13.1-Setup.exe` på Windows 10/11 x64. Python, Tkinter,
+Kör `LoanInventory-1.13.0-Setup.exe` på Windows 10/11 x64. Python, Tkinter,
 SQLite, openpyxl och pyscard följer med. Ingen separat Python-installation
 eller administratörsbehörighet behövs. Kortläsare kan fortfarande behöva
 tillverkarens drivrutin; hårdvara ingår inte i verifieringen.
@@ -37,7 +37,7 @@ företags-/GDPR-lösning; se `dataskydd.md` bredvid detta dokument i installerad
 ## Uppdatera och avinstallera
 
 **Öppna versionssidan i webbläsaren** öppnar enbart
-<https://github.com/SamuelMeyer1/LoanSystem/releases>.
+<https://github.com/SamuelMeyer1/loan_inventory_system/releases>.
 Repo är privat: logga in i webbläsaren med ett GitHub-konto som har åtkomst.
 Knappen kontrollerar inte om en ny version finns och laddar inte ned eller
 installerar något. Ingen GitHub-token finns i appen. Om ingen release har
@@ -79,7 +79,7 @@ Kräver Windows x64, Python 3.13 med Tk och Inno Setup 6 (officiell nedladdning:
 
 Skriptet bygger en isolerad `build\windows\venv` från
 `requirements-build.txt`, en PyInstaller **onedir** i `dist\LoanInventory`,
-kontrollerar paketet och kompilerar `dist\installer\LoanInventory-1.13.1-Setup.exe`.
+kontrollerar paketet och kompilerar `dist\installer\LoanInventory-1.13.0-Setup.exe`.
 Det ändrar inte installerade Python-paket i utvecklingsmiljön.
 Första bygget behöver nätåtkomst till PyPI; installeraren behöver inte nätet.
 Inno Setup måste installeras separat; byggskriptet hämtar inga okända verktyg.
@@ -101,7 +101,7 @@ $env:TMP = $env:TEMP
 .\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory
 # Testpaket med egen AppId, utan genvägar eller avinstallationsregistrering:
 .\windows-installation\Build-Setup.ps1 -Python "C:\sökväg\till\python.exe" -TestInstall
-.\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory --installer dist\installer\LoanInventory-1.13.1-TestSetup.exe
+.\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory --installer dist\installer\LoanInventory-1.13.0-TestSetup.exe
 ```
 
 `-TestInstall` bygger separat `*-TestSetup.exe` med annan AppId, utan genvägar,
