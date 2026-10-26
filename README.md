@@ -8,14 +8,75 @@ Backend använder endast Python standardbibliotek:
 - `sqlite3` för databas
 - `json` för API-svar
 
-## Windows-installationsprogram (V1.13.2)
+## Jobbkort och låntagarprofiler (V1.15.0)
 
-`LoanInventory-1.13.2-Setup.exe` innehåller Python, Tk och nödvändiga bibliotek.
+Sök, språk och inloggning är samlade till höger. Objektets extra information
+under Låna kan fällas ut med Visa mer; namn, kvarvarande antal och status visas direkt.
+Låntagarprofiler skapas utan rollval och är inte inloggningskonton.
+Vid redigering betyder **Tillåt utlåning till personen** manuell tillåtelse,
+inte nylig aktivitet. Inaktivitetsvarningen styrs separat under System → Allmänt.
+
+Jobbkort godkänns, förbereds och lämnas ut gemensamt. Ta bort oönskade artiklar
+före utlämning. Äldre kort med blandade statusar kan stegvis komma ikapp utan att
+redan avancerade artiklar flyttas tillbaka. Individuell framflyttning av en
+artikel i ett flerartikeljobb avvisas även av API:t; äldre enartikelformat stöds.
+
+**Återlämna – välj antal** öppnar ett formulär med antal och eventuell skada per
+artikel. 0 betyder ingen retur av den artikeln. Även en enskild artikel kan
+öppnas för delretur. Antal hämtas på nytt och dubbla/inaktuella returer avvisas.
+Efter exempelvis 4 av 15 visar kortet 4 återlämnade och 11 kvar hos låntagaren.
+Mobilikonen bredvid hämtningsmejlet är inaktiverad: SMS är en framtida funktion.
+
+## Lånekorg och returförtydliganden (V1.15.1)
+
+Skicka låneförfrågan använder korgradens antal för en redan tillagd artikel,
+även om artikeln fortfarande är vald i sökfältet. Använd Lägg till artikel
+eller ändra korgraden för att öka antalet. När alla tillgängliga exemplar
+ligger i korgen visar det inaktiverade antalvalet Inga fler att lägga till.
+Aktuellt lagersaldo kontrolleras fortfarande före sändning.
+
+Skadebeskrivning visas och krävs bara när Varav skadade är större än 0,
+både på återlämningssidan och i jobbkortets returformulär. Sätts antalet
+skadade tillbaka till 0 rensas beskrivningen. Bekräftelsen visar antal
+återlämnade och skadade utan ordet karantän; hanteringen av skadat lager
+är oförändrad.
+
+## Adminnotiser och avvikelser på jobb
+
+Admin och Superadmin delar notisernas läsmarkering. Klockan blir orange och
+pulserar lugnt vid olästa händelser (utan animation vid minskad rörelse).
+När panelen öppnas hämtas senaste händelserna och läsmarkeras för båda rollerna.
+Senaste 20 visas; läsmarkering raderar inte historiken eller ändrar jobbstatus.
+Nya händelser efter den hämtade ögonblicksbilden förblir olästa. Andra öppna
+klienter uppdateras vid nästa kontroll, normalt inom 15 sekunder.
+Panelen stängs vid klick utanför, Escape och navigation. Gå till jobblistan
+öppnar den vanliga jobbvyn med dess befintliga filter.
+
+Varningstriangeln vid artikelantalet visar delreturer och ej åtgärdade skador.
+Visa artiklar och Detaljer visar antal, skadebeskrivning och var skadan åtgärdas.
+Lagerför allt är inaktiverad när kvarvarande lån eller olösta skador blockerar;
+serverns spärr gäller även vid dragning eller samtidiga ändringar.
+Grunddemons jobb #32 har avsiktligt en sådan skada. Att läsa en notis löser
+inte skadan; använd Admin → Skador / karantän för reparation eller kassering.
+
+## Windows-installationsprogram (V1.18.3)
+
+`LoanInventory-1.18.3-Setup.exe` innehåller Python, Tk och nödvändiga bibliotek.
 Installeras per användare, utan separat Python. Data och inställningar ligger
 utanför programmappen och lämnas kvar vid uppgradering/avinstallation.
 Paketerad app säkerhetskopierar befintlig databas före migration.
-Startfönstrets versionsknapp öppnar endast privata GitHub Releases i webbläsaren;
-åtkomst kräver behörigt GitHub-konto. Ingen automatisk kontroll/nedladdning eller token.
+Startfönstret kontrollerar vid varje BAT-/EXE-start om en ny stabil version finns
+i det publika [release-repot](https://github.com/SamuelMeyer1/loan-inventory-releases/releases).
+Kontrollen körs i bakgrunden utan inloggning/token och hindrar inte serverstart
+vid nätverksfel eller om ingen release publicerats ännu. På Windows använder
+uppdateringskontrollen Windows certifikatverifiering via `truststore`, inklusive
+kontroll av certifikatkedja och värdnamn. Inga certifikat installeras av appen.
+Sök uppdateringar provar igen.
+En ny version erbjuds först när rätt publicerade produktions-Setup finns.
+Efter godkännande öppnas nedladdningen i standardwebbläsaren; inget installeras
+automatiskt. Stoppa servern och stäng startfönstret före installation.
+BAT-startens källkod uppdateras inte av Setup. Äldre versioner utan kontrollen
+behöver uppdateras manuellt första gången.
 Se [installation, data, konton och bygge](windows-installation/SETUP.md).
 Det äldre offline-källkodspaketet är en separat installationsmetod.
 
@@ -55,19 +116,39 @@ På Linux kan operativsystemets Tkinter-paket behöva installeras.
   Samma LAN-begränsningar och krav på tillåten nätverksåtkomst gäller som tidigare.
   På en annan dator öppnar man serverns adress direkt i webbläsaren.
   Dela inte en SQLite-fil direkt via en nätverksmapp.
-- **Simulering:** varje start skapar en separat databas med fiktiva låntagare
-  och artiklar. Endast loopback används. `admin/admin` och
+- **Simulering:** första starten bygger en separat, sparad demonstrationsdatabas.
+  Därefter finns dina teständringar kvar mellan starter. Endast loopback används. `admin/admin` och
   `superadmin/superadmin` finns i denna testdatabas.
 
 Simuleringens databas sparas under
-`%LOCALAPPDATA%\LoanInventoryLauncher\simulations` på Windows.
-Ingen befintlig databas kopieras, ersätts eller raderas. Nästa simulering börjar
-om med en ny fil; tidigare simuleringar finns kvar. Välj en tidigare simuleringsfil
-i läget Lokalt om du vill fortsätta i den, men då är det inte längre det spärrade
-simuleringsläget. Externa utskick är avstängda vid all serverstart via startfönstret;
+`%LOCALAPPDATA%\LoanInventoryLauncher\simulations\demo.db` på Windows.
+Den valda riktiga databasen används inte. Äldre `simulation-*.db` importeras
+eller raderas inte automatiskt. Den nya demodatabasen är märkt och kan bara
+startas i Simulering, inte i Lokalt/Nätverk.
+Externa utskick är avstängda vid all serverstart via startfönstret;
 i simuleringen är även fysisk kortläsning och aktivering av utskick spärrade.
 Det gamla alternativet för notifieringssimulering i System är inte samma sak:
 det kan annars skicka till en testmottagare.
+
+Demonstrationen innehåller 5 grupper, 15 påhittade interna/externa låntagare och
+de befintliga 8 demoartiklarna. Det finns 20 pågående jobb (24 lånerader),
+7 återlämnade jobb, 5 förfrågningar, 3 godkända, 3 redo att hämta och
+31 äldre lagerförda jobb. Historiken fyller statistik över flera månader.
+Loctite är förbrukningsvara med en öppen rapport om slut i lager.
+
+Exempel att prova: Demo Erik Holm är spärrad av sena lån, Demo Emil Strand har
+manuell tillåtelse trots sena lån, Demo Ida Hed är manuellt avstängd och
+Demo Axel Vik/Demo Ella Fors har inaktivitetsvarningar. Admin kan se och
+redigera avstängda låntagare; dessa visas inte i förslagen vid nya lån.
+Delreturer, öppna skador, reparation och kassering finns med, med konsekventa
+lagerantal. E-postadresser slutar på `example.invalid`, telefonnummer är tomma.
+
+För en ny demonstration: stoppa servern, välj Simulering och klicka
+**Återställ demodata...**. Efter bekräftelse sparas gamla teständringar i
+`demo.before-reset-*.db`; nästa Starta skapar demon på nytt med datum relativt
+dagens datum. Vanlig omstart flyttar inte datum och fyller inte tillbaka
+borttagna poster. Återställning/ytterligare start av samma demo blockeras
+medan den används. Arkiv och uppgraderingsbackuper raderas inte automatiskt.
 
 Startfönstret visar aktiv databas, URL och loggfil i den skrivskyddade loggpanelen
 längst ner. Det öppnar webbläsaren först när den egna servern svarar.

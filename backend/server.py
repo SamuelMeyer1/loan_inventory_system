@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 import json
 import os
 import mimetypes
@@ -12,6 +13,8 @@ from urllib.parse import parse_qs, urlparse
 from backend.database import initialize_database, row
 from backend import database
 from backend.seed_data import seed_database
+from backend.simulation_data import seed_simulation
+from simulation_store import is_simulation, simulation_guard, validate_simulation
 from backend import services
 from backend.http_access import AccessMixin
 from backend.security import initialize_local_test_accounts
@@ -61,7 +64,9 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
 
         try:
             payload = self.read_json()
-            if parsed.path == "/api/checkout":
+            if parsed.path == "/api/admin-notifications/read":
+                self.send_json({"ok": True, "data": services.mark_admin_notifications_read(payload)})
+            elif parsed.path == "/api/checkout":
                 self.send_json({"ok": True, "data": services.checkout(payload)})
             elif parsed.path == "/api/issue":
                 self.send_json({"ok": True, "data": services.issue_item(payload)})
@@ -234,6 +239,8 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
             self.send_json({"ok": True, "data": services.list_loan_requests()})
         elif path == "/api/consumable-reports":
             self.send_json({"ok": True, "data": services.list_consumable_reports()})
+        elif path == "/api/admin-notifications":
+            self.send_json({"ok": True, "data": services.list_admin_notifications()})
         elif path == "/api/events":
             limit = int(query.get("limit", ["100"])[0])
             self.send_json({"ok": True, "data": services.recent_events(limit)})
@@ -326,24 +333,31 @@ def run_server(host: str | None = None, port: int = 8000) -> None:
     if simulation:
         simulation_path = database.DATABASE_PATH.resolve()
         if (not os.environ.get("LOAN_DATABASE_PATH")
-                or simulation_path == (ROOT_DIR / "data" / "inventory.db").resolve()
-                or not simulation_path.is_file()
-                or simulation_path.stat().st_size != 0):
-            raise ValueError("Simulering kräver en ny tom separat databas från startfönstret.")
+                or simulation_path == (ROOT_DIR / "data" / "inventory.db").resolve()):
+            raise ValueError("Simulering kräver en separat demodatabas från startfönstret.")
+        validate_simulation(simulation_path)
     anonymous_operator = host not in ("127.0.0.1", "localhost")
     fixed_test_credentials = os.environ.get("LOAN_LOCAL_FIXED_TEST_CREDENTIALS") == "1"
     if fixed_test_credentials and anonymous_operator:
         raise ValueError("Fasta lokala testinloggningar får inte användas i LAN-läge.")
     server = ThreadingHTTPServer((host, port), AppHandler, bind_and_activate=False)
+    guards = ExitStack()
     try:
         # Reserve the port now, but do not queue clients until startup is complete.
         server.server_bind()
+        if simulation:
+            guards.enter_context(simulation_guard(database.DATABASE_PATH))
+            validate_simulation(database.DATABASE_PATH)
+        elif is_simulation(database.DATABASE_PATH):
+            raise ValueError("En simuleringsdatabas får bara öppnas i Simulering, inte Lokalt eller Nätverk.")
         initialize_database()
         if anonymous_operator and row("SELECT username FROM local_test_accounts LIMIT 1"):
             raise ValueError("Databasen innehåller låsta lokala testkonton och får inte användas i LAN-läge.")
-        if fixed_test_credentials:
+        if fixed_test_credentials or simulation:
             initialize_local_test_accounts()
-        if os.environ.get("LOAN_SEED_DEMO") == "1":
+        if simulation:
+            seed_simulation()
+        elif os.environ.get("LOAN_SEED_DEMO") == "1":
             seed_database()
         server.allowed_hosts = {f"{host}:{server.server_port}"}
         if host in ("127.0.0.1", "localhost"):
@@ -361,4 +375,7 @@ def run_server(host: str | None = None, port: int = 8000) -> None:
     except KeyboardInterrupt:
         print("\nStopping server.")
     finally:
-        server.server_close()
+        try:
+            server.server_close()
+        finally:
+            guards.close()

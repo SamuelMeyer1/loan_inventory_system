@@ -84,7 +84,43 @@ class PrivacyAccessTest(unittest.TestCase):
             self.assertEqual(self.call(path, self.admin)[0], 403)
         self.assertEqual(self.call("/api/system-settings", self.admin, "PUT", {})[0], 403)
 
+    def test_admin_notifications_require_staff_and_csrf(self):
+        notifications.log_event("request", "No personal details")
+        self.assertEqual(self.call("/api/admin-notifications")[0], 401)
+        self.assertEqual(self.call("/api/admin-notifications", self.operator)[0], 403)
+        self.assertEqual(self.call("/api/admin-notifications/read", self.operator, "POST", {"up_to_event_id": 0})[0], 403)
+        code, response, _ = self.call("/api/admin-notifications", self.admin)
+        self.assertEqual(code, 200)
+        self.assertEqual(response["data"]["unread_count"], 1)
+        payload = {"up_to_event_id": response["data"]["latest_event_id"]}
+        missing_csrf = {key: value for key, value in self.admin.items() if key != "X-CSRF-Token"}
+        self.assertEqual(self.call("/api/admin-notifications/read", missing_csrf, "POST", payload)[0], 403)
+        self.assertEqual(self.call("/api/admin-notifications/read", self.admin, "POST", payload)[0], 200)
+        self.assertEqual(self.call("/api/admin-notifications", self.admin)[1]["data"]["unread_count"], 0)
+        self.assertEqual(self.call("/api/admin-notifications", self.superadmin)[1]["data"]["unread_count"], 0)
+        notifications.log_event("request", "Another request")
+        code, response, _ = self.call("/api/admin-notifications", self.superadmin)
+        self.assertEqual(response["data"]["unread_count"], 1)
+        self.assertEqual(self.call("/api/admin-notifications/read", self.superadmin, "POST",
+                                  {"up_to_event_id": response["data"]["latest_event_id"]})[0], 200)
+        self.assertEqual(self.call("/api/admin-notifications", self.admin)[1]["data"]["unread_count"], 0)
+
+    def test_internal_rules_editing_requires_superadmin_and_operator_fields_stay_minimal(self):
+        payload = {"inactive_user_days": 180, "notify_admin_loaned": True}
+        self.assertEqual(self.call("/api/system-settings", self.admin, "PUT", payload)[0], 403)
+        self.assertEqual(self.call("/api/system-settings", self.superadmin, "PUT", payload)[0], 200)
+        self.assertEqual(notifications.get_system_settings()["inactive_user_days"], "180")
+        self.assertEqual(self.call("/api/system-settings", self.superadmin, "PUT", {"inactive_user_days": 0})[0], 400)
+        user = self.call("/api/users", self.operator)[1]["data"][0]
+        self.assertNotIn("last_borrowed_at", user)
+        self.assertNotIn("inactivity_warning", user)
+
     def test_partial_return_ownership_and_admin_damage_resolution(self):
+        with database.connect() as db:
+            request_id = db.execute("""INSERT INTO loan_requests
+                (user_id, object_id, quantity, lending_date, return_date, status, created_at, updated_at)
+                VALUES ('u1', 'M', 1, '2026-01-01', '2026-01-02', 'loaned', '2026-01-01', '2026-01-01')""").lastrowid
+            db.execute("UPDATE loans SET loan_request_id=? WHERE loan_id=1", (request_id,))
         item = {"loan_id": 1, "quantity": 1, "damaged_quantity": 1,
                 "damage_description": "Cracked case", "expected_returned_quantity": 0}
         self.assertEqual(self.call("/api/damaged-returns")[0], 401)
@@ -94,6 +130,11 @@ class PrivacyAccessTest(unittest.TestCase):
         status, response, _ = self.call("/api/return", self.operator, "POST", {"items": [item]})
         self.assertEqual(status, 200, response)
         report_id = response["data"]["items"][0]["return_id"]
+        admin_job = self.call("/api/loan-requests", self.admin)[1]["data"][0]
+        self.assertEqual(admin_job["unresolved_damage_description"], "Cracked case")
+        self.assertEqual(admin_job["stocking_blocked"], 1)
+        operator_job = self.call("/api/loan-requests", self.operator)[1]["data"][0]
+        self.assertNotIn("unresolved_damage_description", operator_job)
         self.assertEqual(self.call("/api/return", self.operator, "POST", {"items": [item]})[0], 400)
         status, queue, _ = self.call("/api/damaged-returns", self.admin)
         self.assertEqual(status, 200)

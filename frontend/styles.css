@@ -4,6 +4,68 @@
    ============================================================ */
 
 [hidden] { display: none !important; }
+.admin-rule-fields {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+}
+.admin-rule-fields legend { font-weight: 700; }
+.admin-rule-fields p { margin: 0; color: var(--muted); }
+.admin-rule-fields .admin-rule-check { display: flex; align-items: center; gap: 10px; }
+.admin-rule-check input { width: 18px; min-height: 18px; height: 18px; flex: 0 0 auto; }
+.inactivity-warning { display: block; color: #924000; font-weight: 700; }
+.admin-notifications { position: relative; }
+.admin-notifications summary { display: flex; align-items: center; gap: 5px; padding: 6px; cursor: pointer; }
+.admin-notifications summary::-webkit-details-marker { display: none; }
+.admin-notifications summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.admin-notifications.has-unread > summary {
+  color: #853b06;
+  background: #ffdfb1;
+  border-radius: 10px;
+  font-weight: 700;
+  animation: notification-pulse 1.8s ease-in-out infinite;
+}
+@keyframes notification-pulse {
+  50% { box-shadow: 0 0 0 5px #ef8b2840; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-notifications.has-unread > summary { animation: none; }
+}
+.job-warning-icon { display: inline-flex; color: #924000; }
+.job-warning-icon svg { width: 20px; height: 20px; fill: #fff1cb; stroke: currentColor; stroke-width: 2; }
+.job-warning-text { color: #853b06; background: #fff4d8; padding: 8px; border-radius: 6px; }
+.job-warning-text p { margin: 4px 0; white-space: pre-wrap; }
+.admin-notification-panel {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: min(360px, calc(100vw - 32px));
+  z-index: 50;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px #17212b26;
+  white-space: normal;
+}
+.admin-notification-panel h2 { margin: 0; font-size: 1.1rem; }
+.admin-notification-panel p { font-size: 13px; color: var(--muted); }
+.admin-notification-panel ul { list-style: none; padding: 0; max-height: 300px; overflow: auto; }
+.admin-notification-panel li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.admin-notification-panel li.unread { font-weight: 700; }
+.admin-notification-panel small { display: block; color: var(--muted); font-weight: 400; }
+@media (max-width: 740px) {
+  .admin-notification-panel {
+    position: fixed;
+    top: 100px;
+    right: 16px;
+    max-height: calc(100dvh - 116px);
+    overflow: auto;
+  }
+}
 .privacy-login { max-width: 760px; margin: 3rem auto; padding: 2rem; }
 .privacy-login label { display: block; margin: 1rem 0; }
 .privacy-login pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -561,12 +623,22 @@ dt {
   align-items: center;
   gap: 10px;
   min-height: 40px;
-  margin-left: auto;
+  margin-left: 0;
   padding: 4px 5px 4px 13px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #f8fafc;
   white-space: nowrap;
+}
+
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .account-role {
@@ -605,12 +677,9 @@ dt {
     gap: 8px;
   }
 
-  .account-access {
-    margin-right: auto;
-  }
-
-  .language-toggle {
-    order: 3;
+  .topbar-controls {
+    gap: 8px;
+    width: 100%;
   }
 }
 
@@ -1960,6 +2029,7 @@ textarea {
 }
 
 .checkout-action-row,
+.checkout-user-disclosure,
 .selected-user-details,
 .selected-object-details,
 .checkout-loan-details,
@@ -2012,6 +2082,60 @@ textarea {
 .selected-object-details input {
   background: white;
   color: var(--text);
+}
+
+.checkout-user-disclosure summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 6px 0;
+}
+
+.checkout-user-disclosure summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.checkout-user-disclosure .selected-user-details,
+.checkout-user-disclosure .selected-object-details {
+  margin-top: 8px;
+}
+
+.checkout-user-disclosure:not([open]) #checkoutUserShowLess,
+.checkout-user-disclosure[open] #checkoutUserShowMore,
+.checkout-user-disclosure:not([open]) #checkoutObjectShowLess,
+.checkout-user-disclosure[open] #checkoutObjectShowMore {
+  display: none;
+}
+
+.job-return-dialog {
+  width: min(680px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: var(--panel);
+}
+
+.job-return-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.job-return-item {
+  min-width: 0;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.job-return-item label {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
 }
 
 .checkout-loan-details,
@@ -2998,6 +3122,7 @@ tr.late {
 .loan-cart-row > span { flex: 1; min-width: 160px; }
 .loan-cart-row small, .request-reference { display: block; margin-top: 4px; color: #526477; }
 .loan-cart-row input { width: 90px; }
+.loan-cart-row .cart-stock-warning { color: #a32d00; font-weight: 600; }
 .loan-cart-row > label { display: flex; align-items: center; gap: 10px; }
 .request-group { display: grid; gap: 10px; padding: 12px; border: 1px solid #cad5df; border-radius: 8px; background: white; cursor: grab; transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
 .request-group.dragging { opacity: 0.78; cursor: grabbing; transform: rotate(2deg) scale(1.01); box-shadow: 0 16px 30px rgba(23, 33, 43, 0.18); }

@@ -22,7 +22,7 @@ datas = [(str(root / name), str(Path(name).parent)) for name in assets]
 datas += [(str(root / "windows-installation" / "SETUP.md"), "docs"),
           (str(root / "docs" / "dataskydd.md"), "docs"),
           (str(Path(sys.base_prefix) / "LICENSE.txt"), "licenses/python")]
-for package in ("openpyxl", "et-xmlfile", "pyscard", "pyinstaller"):
+for package in ("openpyxl", "et-xmlfile", "pyscard", "pyinstaller", "truststore"):
     datas += copy_metadata(package)
 
 a = Analysis(

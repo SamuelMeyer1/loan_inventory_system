@@ -10,7 +10,14 @@ Kontrollerat mot arbetskopian 2026-09-30. Allmänna arbetsregler finns i `AGENTS
   grupp-ID; befintlig kod använder `COALESCE(request_group_id, request_id)`.
 - Gruppflödet är `requested → approved → prepared → loaned → returned → stocked`.
   Gruppändringar och valda återlämningar ska vara atomiska: allt eller inget.
+- Godkännande/förberedelse/utlämning av flerartikeljobb kräver gruppanrop.
+  Äldre blandade kort får komma ikapp utan att avancerade rader flyttas tillbaka.
+  Jobbkortets returformulär använder samma antal-/skadevalidering och
+  `expected_returned_quantity` som den separata återlämningssidan.
 - Upprepad återlämning får inte öka saldot igen. Valda lån ska tillhöra användaren.
+- Lånekorgen visar tillgängligt lager minus den egna korgen; detta är ingen reservation.
+  Förfrågan hämtar nytt saldo och servern validerar summerat antal per artikel
+  atomiskt mot tillgängligt lager. Faktisk utlåning måste fortfarande kontrollera saldot igen.
 - `loans.quantity` är ursprungligt antal; aktivt antal är `quantity - returned_quantity`.
   `loan_returns` innehåller varje retur och skadepost. Nya delreturer måste ange
   `expected_returned_quantity`; validering och saldon ligger i samma skrivtransaktion.
@@ -22,7 +29,9 @@ Kontrollerat mot arbetskopian 2026-09-30. Allmänna arbetsregler finns i `AGENTS
 - Notiser ska hantera fel utan att dölja att en databasändring redan genomförts.
   Notifieringssimuleringen kan skicka till testmottagare; mocka transporten i tester.
   Startfönstrets isolerade simulering (`LOAN_SIMULATION=1`) spärrar däremot
-  alla externa transporter och fysisk kortläsning, och använder en ny separat databas.
+  alla externa transporter och fysisk kortläsning, och använder en märkt separat
+  `simulations/demo.db`. Ändringar sparas mellan starter. Återställning kräver
+  stoppad server och arkiverar bara denna demo; testning ska ha eget temporärt storage.
 - `open_door` i `common.py` skriver idag en logghändelse; det är inte färdig
   fysisk styrning av hiss/skåp. Kortläsaren använder däremot `pyscard`.
 - Migreringar ska fungera både vid ny databas och upprepad start. Bevara

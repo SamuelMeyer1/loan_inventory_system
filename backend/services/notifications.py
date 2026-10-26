@@ -62,6 +62,10 @@ SYSTEM_SETTING_DEFAULTS = {
     "overdue_repeat_days": "3",
     "overdue_block_enabled": "1",
     "overdue_block_limit": "3",
+    "inactive_user_warning_enabled": "1",
+    "inactive_user_days": "365",
+    "notify_admin_new_request": "1",
+    "notify_admin_loaned": "0",
     "message_new_job_subject": "Nytt lånejobb #{request_id}",
     "message_new_job_body": (
         "NY LÅNEFÖRFRÅGAN\n\n"
@@ -104,6 +108,12 @@ SYSTEM_SETTING_DEFAULTS = {
     ),
 }
 
+ADMIN_RULE_KEYS = {
+    "inactive_user_warning_enabled", "inactive_user_days",
+    "notify_admin_new_request", "notify_admin_loaned",
+}
+ADMIN_NOTIFICATION_SETTINGS = {"request": "notify_admin_new_request", "loan": "notify_admin_loaned"}
+
 
 def get_system_settings() -> dict[str, str]:
     settings = SYSTEM_SETTING_DEFAULTS.copy()
@@ -128,6 +138,10 @@ def update_system_settings(payload: dict[str, Any]) -> dict[str, str | bool]:
     settings = get_system_settings()
     for key in SYSTEM_SETTING_DEFAULTS:
         value = payload.get(key, settings[key])
+        if key in ADMIN_RULE_KEYS - {"inactive_user_days"} and value not in (
+            True, False, "1", "0", "true", "false", "yes", "no", "on", "off"
+        ):
+            raise ValueError("Välj på eller av för inaktivitetsvarning och Adminnotiser.")
         if key.endswith("_enabled") or key.startswith("notify_"):
             settings[key] = "1" if value in (True, "1", "true", "yes", "on") else "0"
         elif key == "smtp_use_tls":
@@ -152,7 +166,12 @@ def update_system_settings(payload: dict[str, Any]) -> dict[str, str | bool]:
         raise ValueError("Gränsen för sena lån måste vara minst 1.")
     if int(settings["max_loan_days"] or "0") <= 0:
         raise ValueError("Max lånetid måste vara minst 1 dag.")
-    if simulation_enabled(settings) and not simulation_recipient(settings):
+    days = settings["inactive_user_days"]
+    if not days.isascii() or not days.isdigit() or not 1 <= int(days) <= 36500:
+        raise ValueError("Inaktivitetsgränsen måste vara ett heltal mellan 1 och 36500 dagar.")
+    # Internal rules do not require configuring an external email transport.
+    internal_rules_only = bool(payload) and set(payload) <= ADMIN_RULE_KEYS
+    if not internal_rules_only and simulation_enabled(settings) and not simulation_recipient(settings):
         raise ValueError("Ange testmottagare eller stäng av simuleringsläge.")
 
     timestamp = now_text()
@@ -173,6 +192,52 @@ def update_system_settings(payload: dict[str, Any]) -> dict[str, str | bool]:
             (timestamp, "settings", "Systeminställningar uppdaterades"),
         )
     return get_public_system_settings(settings)
+
+def list_admin_notifications() -> dict[str, Any]:
+    settings = get_system_settings()
+    event_types = [kind for kind, key in ADMIN_NOTIFICATION_SETTINGS.items() if settings[key] == "1"]
+    if not event_types:
+        return {"items": [], "unread_count": 0, "latest_event_id": 0}
+    placeholders = ",".join("?" for _ in event_types)
+    with connect() as db:
+        db.execute("BEGIN")
+        items = [dict(item) for item in db.execute(
+            f"""SELECT e.event_id, e.event_time, e.event_type,
+                       e.event_id > COALESCE(r.last_event_id, 0) AS unread
+                FROM events e LEFT JOIN admin_notification_shared_reads r
+                    ON r.event_type = e.event_type
+                WHERE e.event_type IN ({placeholders}) ORDER BY e.event_id DESC LIMIT 20""",
+            event_types,
+        )]
+        unread = db.execute(
+            f"""SELECT COUNT(*) FROM events e LEFT JOIN admin_notification_shared_reads r
+                    ON r.event_type = e.event_type
+                WHERE e.event_id > COALESCE(r.last_event_id, 0) AND e.event_type IN ({placeholders})""",
+            event_types,
+        ).fetchone()[0]
+    return {"items": items, "unread_count": unread,
+            "latest_event_id": items[0]["event_id"] if items else 0}
+
+
+def mark_admin_notifications_read(payload: dict[str, Any]) -> dict[str, int]:
+    try:
+        event_id = int(str(payload.get("up_to_event_id", "")))
+    except (ValueError, TypeError) as error:
+        raise ValueError("Ange ett giltigt notis-ID.") from error
+    settings = get_system_settings()
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        maximum = db.execute("SELECT COALESCE(MAX(event_id), 0) FROM events").fetchone()[0]
+        if event_id < 0 or event_id > maximum:
+            raise ValueError("Notis-ID ligger utanför tillgänglig historik.")
+        for kind, key in ADMIN_NOTIFICATION_SETTINGS.items():
+            if settings[key] == "1":
+                db.execute("""
+                    INSERT INTO admin_notification_shared_reads (event_type, last_event_id) VALUES (?, ?)
+                    ON CONFLICT(event_type) DO UPDATE
+                    SET last_event_id = MAX(last_event_id, excluded.last_event_id)
+                """, (kind, event_id))
+    return {"up_to_event_id": event_id}
 
 
 def parse_email_list(value: str) -> list[str]:

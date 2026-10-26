@@ -7,6 +7,8 @@ const state = {
   loanCart: [],
   returnBusy: false,
   returnSummary: null,
+  jobReturnLoans: [],
+  jobReturnLoading: false,
   damageBusy: false,
   damagedReturns: [],
   users: [],
@@ -16,6 +18,12 @@ const state = {
   consumableReports: [],
   events: [],
   systemSettings: {},
+  adminNotifications: { items: [], unread_count: 0, latest_event_id: 0 },
+  adminNotificationError: "",
+  adminNotificationTimer: null,
+  adminNotificationBusy: false,
+  adminNotificationReadBusy: false,
+  adminNotificationRequest: 0,
   statistics: {},
   editingObjectId: null,
   editingUserId: null,
@@ -87,6 +95,8 @@ const messageTemplateFields = [
 // ============================================================
 
 function setView(view) {
+  const notifications = $("#adminNotifications");
+  if (notifications) notifications.open = false;
   if (!canSeeView(view)) {
     view = "dashboard";
   }
@@ -107,7 +117,7 @@ async function refreshAll() {
     api("/api/stats"),
     state.role === "operator" ? Promise.resolve({}) : api("/api/statistics"),
     api("/api/objects"),
-    api("/api/users"),
+    api(state.role === "operator" ? "/api/users" : "/api/users?include_inactive=1"),
     state.role === "operator" ? Promise.resolve([]) : api("/api/groups"),
     api("/api/loans"),
     api("/api/loan-requests"),
@@ -151,6 +161,7 @@ async function refreshAll() {
   renderPickupItems();
   renderMyLoans();
   applyTranslations();
+  if (state.role !== "operator") await refreshAdminNotifications();
   if (document.querySelector("#statisticsView.active")) {
     renderAllStatisticsCharts(state);
   }
@@ -229,6 +240,10 @@ function renderSystemSettings() {
   setChecked("#overdueBlockEnabled", settings.overdue_block_enabled === "1");
   setValue("#overdueBlockLimit", settings.overdue_block_limit || "3");
   setValue("#maxLoanDays", settings.max_loan_days || "90");
+  setChecked("#inactiveUserWarningEnabled", settings.inactive_user_warning_enabled === "1");
+  setValue("#inactiveUserDays", settings.inactive_user_days || "365");
+  setChecked("#notifyAdminNewRequest", settings.notify_admin_new_request === "1");
+  setChecked("#notifyAdminLoaned", settings.notify_admin_loaned === "1");
   updateCheckoutDateLimit();
   setTextValue("#smtpSummary", settings.smtp_enabled === "1" ? "Ja" : "Nej");
   setTextValue("#teamsSummary", settings.teams_enabled === "1" ? "Ja" : "Nej");
@@ -395,14 +410,13 @@ function renderUsersTable() {
 		    usersBody.innerHTML = state.users.map((user) => `
 		      <tr>
         <td>${userBorrowStatus(user)}</td>
-	        <td>${escapeHtml(user.name)}</td>
+	        <td>${escapeHtml(user.name)}${user.inactivity_warning ? `<small class="inactivity-warning" title="${escapeHtml(t("settings.inactivityReason", { days: user.inactive_for_days }))}">${escapeHtml(t("settings.inactive"))}</small>` : ""}</td>
 	        <td>${escapeHtml(user.alias || "")}</td>
 	        <td>${escapeHtml(user.rfid_code || "")}</td>
 	        <td>${escapeHtml(user.email || "")}</td>
         <td>${escapeHtml(user.phone || "")}</td>
 	        <td>${escapeHtml(user.company || "")}</td>
 	        <td>${escapeHtml(user.department_name || user.department || "")}</td>
-		        <td>${escapeHtml(user.role || "operator")}</td>
 	        <td>
 	          <button class="table-action-button" type="button" data-edit-user="${escapeHtml(user.user_id)}">Edit</button>
 	          <button class="table-action-button" type="button" data-user-card="${escapeHtml(user.user_id)}">Lägg till kort</button>
@@ -427,6 +441,9 @@ function renderUsersTable() {
 }
 
 function userBorrowStatus(user) {
+  if (user.active === 0) {
+    return `<span class="borrow-status-badge borrow-status-blocked" title="${escapeHtml(t("admin.lendingDisabledHelp"))}">${escapeHtml(t("admin.lendingDisabled"))}</span>`;
+  }
   const overdueCount = Number(user.overdue_loan_count || 0);
   const isOverride = Number(user.borrow_override || 0) === 1;
   const isBlocked = Number(user.borrow_blocked || 0) === 1;
@@ -549,7 +566,6 @@ function userSearchText(user) {
     user.rfid_code,
     user.department,
     user.department_name,
-    user.role,
   ].join(" ").toLowerCase();
 }
 
@@ -565,7 +581,7 @@ function renderCheckoutUserSuggestions() {
   }
 
   const labels = userLabels();
-  const matches = state.users.filter((user) => userSearchText(user).includes(term)).slice(0, 8);
+  const matches = state.users.filter((user) => user.active !== 0 && userSearchText(user).includes(term)).slice(0, 8);
   suggestions.innerHTML = matches.map((user) => `
     <button class="suggestion-button" type="button" data-select-user="${escapeHtml(user.user_id)}">
       <strong>${escapeHtml(labels.get(user.user_id) || user.name)}</strong>
@@ -622,6 +638,13 @@ function renderCheckoutUserDetails(user = null) {
   const details = $("#checkoutUserDetails");
   if (!details) return;
   const selectedUser = user || state.users.find((item) => item.user_id === $("#checkoutUser").value);
+  const disclosure = $("#checkoutUserDisclosure");
+  if (disclosure) {
+    const userId = selectedUser?.user_id || "";
+    if (disclosure.dataset.userId !== userId) disclosure.open = false;
+    disclosure.dataset.userId = userId;
+    disclosure.hidden = !selectedUser;
+  }
   if (!selectedUser) {
     ["Company", "Group", "Department", "Email", "Phone", "Alias"].forEach((field) => {
       const input = $(`#checkoutUser${field}`);
@@ -776,7 +799,7 @@ function isConsumableObject(item) {
 }
 
 function matchesCheckoutStockFilter(item) {
-  return item.available_quantity > 0;
+  return remainingLoanQuantity(item) > 0;
 }
 
 function renderCheckoutObjectSuggestions() {
@@ -790,13 +813,13 @@ function renderCheckoutObjectSuggestions() {
 
   const allMatches = state.objects
     .filter((item) => !isConsumableObject(item) && objectSearchText(item).includes(term))
-    .sort((a, b) => b.available_quantity - a.available_quantity || a.name.localeCompare(b.name));
+    .sort((a, b) => remainingLoanQuantity(b) - remainingLoanQuantity(a) || a.name.localeCompare(b.name));
   const filteredMatches = allMatches.filter(matchesCheckoutStockFilter);
   const matches = filteredMatches.slice(0, 8);
   suggestions.innerHTML = matches.map((item) => `
     <button class="suggestion-button" type="button" data-select-object="${escapeHtml(item.object_id)}">
       <strong>${escapeHtml(item.name)} (${escapeHtml(item.article_number || item.object_id)})</strong>
-      <span>${escapeHtml([t("stock.count", { count: item.available_quantity }), item.category, item.location, item.supplier_article_number].filter(Boolean).join(" · "))}</span>
+      <span>${escapeHtml([t("checkout.stockCount", { count: remainingLoanQuantity(item) }), item.category, item.location, item.supplier_article_number].filter(Boolean).join(" · "))}</span>
     </button>
   `).join("");
   suggestions.classList.toggle("visible", matches.length > 0);
@@ -1017,8 +1040,8 @@ function renderJobs() {
   document.querySelectorAll("[data-job-group-id]").forEach((button) => {
     button.addEventListener("click", () => updateJobGroupStatus(Number(button.dataset.jobGroupId), button.dataset.jobStatus));
   });
-  document.querySelectorAll("[data-job-id]").forEach((button) => {
-    button.addEventListener("click", () => updateJobStatus(Number(button.dataset.jobId), button.dataset.jobStatus));
+  document.querySelectorAll("[data-job-return-id]").forEach((button) => {
+    button.addEventListener("click", () => openJobReturn(Number(button.dataset.jobReturnGroup), Number(button.dataset.jobReturnId)));
   });
   document.querySelectorAll("[data-delete-job]").forEach((button) => {
     button.addEventListener("click", () => deleteJob(Number(button.dataset.deleteJob)));
@@ -1103,6 +1126,8 @@ function renderConsumableReports() {
 function renderJobGroup(group) {
   const first = group.items[0];
   const action = nextJobAction(group.status);
+  const hasWarnings = group.items.some((job) => jobWarnings(job).length);
+  const stockingBlocked = action?.[0] === "stocked" && group.items.some((job) => job.stocking_blocked);
   const pickupEmailSent = group.items.every((job) => Boolean(job.pickup_ready_email_sent_at));
   const allPrepared = group.items.every((job) => job.status === "prepared");
   const pickupEmailButton = allPrepared
@@ -1110,6 +1135,12 @@ function renderJobGroup(group) {
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M22 2 11 13"></path>
           <path d="m22 2-7 20-4-9-9-4Z"></path>
+        </svg>
+      </button>
+      <button class="job-pickup-email-button is-muted" type="button" disabled title="${escapeHtml(t("jobs.smsFuture"))}" aria-label="${escapeHtml(t("jobs.smsFuture"))}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="6" y="2" width="12" height="20" rx="2"></rect>
+          <path d="M10 18h4"></path>
         </svg>
       </button>` : "";
   const statusCounts = JOB_REQUEST_STATUS_ORDER
@@ -1121,7 +1152,7 @@ function renderJobGroup(group) {
     <article class="request-group" draggable="true" data-drag-group-id="${group.id}" data-drag-job-status="${group.status}">
       <div class="job-card-top">
         <strong>${state.language === "en" ? "Request" : "Förfrågan"} #${group.id}</strong>
-        <span class="job-card-top-right">${pickupEmailButton}<span>${group.items.length} ${state.language === "en" ? "articles" : "artiklar"}</span></span>
+        <span class="job-card-top-right">${pickupEmailButton}${hasWarnings ? `<span class="job-warning-icon" role="img" aria-label="${escapeHtml(t("jobs.attention"))}" title="${escapeHtml(t("jobs.attention"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20Z"/><path d="M12 9v5m0 3v1"/></svg></span>` : ""}<span>${group.items.length} ${state.language === "en" ? "articles" : "artiklar"}</span></span>
       </div>
       <h3>${escapeHtml(first.user_name)}</h3>
       <div class="job-card-summary">
@@ -1135,24 +1166,48 @@ function renderJobGroup(group) {
         <div class="job-group-items">${group.items.map(renderJobGroupItem).join("")}</div>
       </details>
       <div class="job-card-actions">
-        ${action ? `<button class="primary-button" type="button" data-job-group-id="${group.id}" data-job-status="${action[0]}">${escapeHtml(t(action[1]))}</button>` : ""}
+        ${stockingBlocked ? `<p class="job-warning-text">${escapeHtml(t("jobs.stockingBlocked"))}</p>` : ""}
+        ${action ? `<button class="primary-button" type="button" data-job-group-id="${group.id}" data-job-status="${action[0]}" ${stockingBlocked ? "disabled" : ""}>${escapeHtml(t(action[1]))}</button>` : ""}
       </div>
     </article>
   `;
 }
 
+function jobWarnings(job) {
+  const warnings = [];
+  if (job.remaining_quantity > 0 && (job.returned_quantity > 0 ||
+      (["returned", "stocked"].includes(job.status) && job.stocking_blocked))) {
+    warnings.push(t("jobs.remainingReturn", { count: job.remaining_quantity }));
+  }
+  if (job.unresolved_damage_quantity > 0) {
+    warnings.push(t("jobs.unresolvedDamage", { count: job.unresolved_damage_quantity }));
+  }
+  return warnings;
+}
+
+function renderJobWarnings(job) {
+  const warnings = jobWarnings(job);
+  if (!warnings.length) return "";
+  return `<div class="job-warning-text">
+    ${warnings.map((text) => `<p>${escapeHtml(text)}</p>`).join("")}
+    ${job.unresolved_damage_quantity > 0 ? `<p>${escapeHtml(job.unresolved_damage_description || "")}</p><p>${escapeHtml(t("jobs.damageAction"))}</p>` : ""}
+  </div>`;
+}
+
 function renderJobGroupItem(job) {
-  const action = nextJobAction(job.status);
+  const canRemove = ["requested", "approved", "prepared"].includes(job.status);
   return `
     <div class="job-group-item">
       <div>
         <strong>${escapeHtml(job.object_name)}</strong>
         <span>${escapeHtml(job.object_id)} · ${job.quantity} st · ${escapeHtml(jobStatusText(job.status))}</span>
+        ${job.returned_quantity > 0 ? `<small>${escapeHtml(t("jobs.returnProgress", { returned: job.returned_quantity, remaining: job.remaining_quantity }))}</small>` : ""}
+        ${renderJobWarnings(job)}
       </div>
       <div class="job-group-item-actions">
         <button class="secondary-button" type="button" data-open-job-id="${job.request_id}">${state.language === "en" ? "Details" : "Detaljer"}</button>
-        ${action ? `<button class="table-action-button" type="button" data-job-id="${job.request_id}" data-job-status="${action[0]}">${escapeHtml(jobStatusText(action[0]))}</button>` : ""}
-        <button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>
+        ${job.status === "loaned" ? `<button class="table-action-button" type="button" data-job-return-id="${job.request_id}" data-job-return-group="${job.request_group_id || job.request_id}">${escapeHtml(t("jobs.returnArticles"))}</button>` : ""}
+        ${canRemove ? `<button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1190,6 +1245,7 @@ function renderJobDetailView(job) {
   $("#editJobButton").hidden = job.status === "returned" || job.status === "stocked";
   $("#editJobButton").textContent = state.language === "en" ? "Edit" : "Ändra";
   $("#jobDetailContent").innerHTML = `
+    ${renderJobWarnings(job)}
     <dl class="job-detail-grid">
       ${jobDetailRows(job).map(([label, value]) => `
         <dt>${escapeHtml(label)}</dt>
@@ -1389,9 +1445,6 @@ function bindJobDragAndDrop() {
         (item) => Number(item.request_group_id || item.request_id) === requestGroupId
       ))[0];
       if (!group) return;
-      if (draggedCard && placeholder.parentElement === zone) {
-        zone.insertBefore(draggedCard, placeholder);
-      }
       placeholder.remove();
       if (group.status === status) return;
       updateJobGroupStatus(requestGroupId, status);
@@ -1428,6 +1481,15 @@ function renderEvents() {
 // ============================================================
 
 function applyRole() {
+  renderAdminNotifications();
+  if (state.role === "operator") {
+    clearInterval(state.adminNotificationTimer);
+    state.adminNotificationTimer = null;
+  } else if (!state.adminNotificationTimer) {
+    state.adminNotificationTimer = setInterval(() => {
+      if (!document.hidden && !state.adminNotificationBusy) refreshAdminNotifications();
+    }, 15000);
+  }
   const settingsButton = document.querySelector('[data-admin-section="settings"]');
   if (settingsButton) settingsButton.hidden = state.role !== "superadmin";
   ["#openQuickUserButton", "#openUserScanButton"].forEach((selector) => {
@@ -1445,6 +1507,31 @@ function applyRole() {
   if (currentView && !canSeeView(currentView)) {
     setView("dashboard");
   }
+}
+
+function renderAdminNotifications() {
+  const panel = $("#adminNotifications");
+  if (!panel) return;
+  panel.hidden = state.role === "operator";
+  if (panel.hidden) {
+    panel.open = false;
+    $("#adminNotificationList").innerHTML = "";
+    return;
+  }
+  const data = state.adminNotifications;
+  const error = state.adminNotificationError;
+  panel.classList.toggle("has-unread", data.unread_count > 0 && !error);
+  $("#adminNotificationCount").textContent = error ? "!" : String(data.unread_count);
+  $("#adminNotificationsSummary").setAttribute("aria-label",
+    error ? t("notifications.failed") : t("notifications.unread", { count: data.unread_count }));
+  $("#adminNotificationError").hidden = !error;
+  $("#adminNotificationError").textContent = error ? `${t("notifications.failed")} ${error}` : "";
+  $("#adminNotificationList").innerHTML = data.items.length ? data.items.map((item) => `
+    <li class="${item.unread ? "unread" : ""}">
+      <span>${escapeHtml(t(`notifications.${item.event_type}`))}</span>
+      <small>${escapeHtml(formatTime(item.event_time))}</small>
+    </li>`).join("") : `<li>${escapeHtml(t("notifications.empty"))}</li>`;
+  $("#markAdminNotificationsRead").disabled = Boolean(error) || !data.unread_count || state.adminNotificationReadBusy;
 }
 
 function canSeeView(view) {
@@ -1557,6 +1644,23 @@ function clearImagePreview() {
 // ============================================================
 
 function bindEvents() {
+  $("#markAdminNotificationsRead")?.addEventListener("click", () => markAdminNotificationsRead());
+  $("#adminNotifications")?.addEventListener("toggle", readOpenedAdminNotifications);
+  document.addEventListener("click", (event) => {
+    const panel = $("#adminNotifications");
+    if (panel?.open && !panel.contains(event.target)) panel.open = false;
+  });
+  document.addEventListener("keydown", (event) => {
+    const panel = $("#adminNotifications");
+    if (event.key === "Escape" && panel?.open) {
+      panel.open = false;
+      $("#adminNotificationsSummary").focus();
+    }
+  });
+  $("#adminNotificationJobs")?.addEventListener("click", () => {
+    $("#adminNotifications").open = false;
+    setView("jobs");
+  });
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
@@ -1630,6 +1734,20 @@ function bindEvents() {
     });
     $("#returnSelectedButton").addEventListener("click", () => returnSelectedLoans());
     $("#returnAllButton").addEventListener("click", () => returnSelectedLoans(true));
+    $("#jobReturnForm").addEventListener("submit", saveJobReturn);
+    $("#cancelJobReturn").addEventListener("click", () => $("#jobReturnDialog").close());
+    $("#jobReturnDialog").addEventListener("cancel", (event) => {
+      if (state.returnBusy) event.preventDefault();
+    });
+    $("#jobReturnDialog").addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (!state.returnBusy) $("#jobReturnDialog").close();
+    });
+    $("#jobReturnDialog").addEventListener("close", () => {
+      state.jobReturnLoans = [];
+      $("#jobReturnItems").innerHTML = "";
+    });
     $("#requestLoanButton").addEventListener("click", requestLoan);
 	  $("#consumableReportForm")?.addEventListener("submit", saveConsumableReport);
 	  $("#addObjectForm").addEventListener("submit", saveObject);

@@ -1,7 +1,7 @@
 # Uppdates
 
-Nuvarande version: V1.13.2
-Senast uppdaterad: 2026-10-23
+Nuvarande version: V1.18.3
+Senast uppdaterad: 2026-10-26
 
 Den har filen anvands som projektlogg. Vid varje update:
 
@@ -14,6 +14,87 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.18.3 - 2026-10-26
+
+- Tydligare text skiljer körd version från senaste publicerade version vid uppdateringskontroll.
+- Liten patchrelease för att testa erbjudande och nedladdning från 1.18.2. Certifikatfixen behålls; inga ändringar i databas eller lånehantering.
+
+## V1.18.2 - 2026-10-26
+
+- Uppdateringskontrollen använder Windows certifikatverifiering via truststore i stället för standardanslutningens OpenSSL-verifiering.
+- Certifikatkedja och värdnamn verifieras fortfarande. Inga rotcertifikat installeras och inget osäkert reservläge används.
+- Tydligare felmeddelande vid certifikatproblem. Äldre installationer med detta fel behöver uppdateras manuellt till denna version.
+- Inga ändringar i databaser eller lånehantering.
+
+## V1.18.1 - 2026-10-26
+
+- Tydligare påminnelse efter öppnad uppdateringsnedladdning: stoppa servern och stäng startfönstret före installation.
+- Liten patchrelease för att prova uppdateringsflödet från 1.18.0. Inga ändringar i databas eller lånehantering.
+
+## V1.18.0 - 2026-10-26
+
+- Startfönstret söker efter nya stabila versioner vid BAT-/EXE-start via det publika release-repot.
+- Ny version visas med versionsinformation och fråga om nedladdning. Godkännande öppnar rätt produktions-Setup i webbläsaren; ingen automatisk installation.
+- Numerisk versionsjämförelse och validering av release, filnamn, uppladdningsstatus och nedladdningsadress.
+- Saknad första release och nätverksfel visas tydligt utan att blockera serverstart. Manuell Sök uppdateringar och Versionssida finns kvar.
+- Kodrepo och databaser publiceras inte. Källkod som körs via BAT uppdateras inte av installationsfilen.
+
+## V1.17.0 - 2026-10-26
+
+- Notisklockan blir orange och pulserar vid nya händelser; respekterar minskad rörelse.
+- Öppnad notispanel läsmarkerar gemensamt för Admin och Superadmin. Jobbstatus ändras inte och nya samtidiga händelser lämnas olästa.
+- Klick utanför, Escape och navigation stänger notispanelen. Länken heter Gå till jobblistan.
+- Varningstriangel vid artikelantal visar delretur och olösta skador. Visa artiklar/Detaljer förklarar antal, skada och åtgärd.
+- Lagerför allt inaktiveras när återstående lån eller skador blockerar. Befintliga lager- och skadespärrar är oförändrade.
+
+## V1.16.0 - 2026-10-26
+
+- Simulering har en egen sparad demo.db. Teständringar och datum finns kvar mellan starter.
+- 5 grupper, 15 påhittade låntagare, 8 demoartiklar och varierade jobb: 20 pågående, 7 återlämnade, förfrågningar och äldre statistik.
+- Exempel på lånespärrar, manuell avstängning/tillåtelse, inaktivitet, delretur, skador, reparation, kassering samt lågt/slut lager.
+- Återställ demodata arkiverar den gamla demon och återskapar data vid nästa start. Samtidig användning/återställning blockeras.
+- Märkta simuleringsdatabaser kan inte öppnas i vanligt lokalt-/LAN-läge. Transporter och fysisk kortläsning är fortfarande spärrade.
+- Admin ser manuellt avstängda låntagare med tydlig märkning; dessa föreslås inte vid nya lån.
+
+## V1.15.1 - 2026-10-26
+
+- Full lånekorg kan skickas med samma artikel vald, utan att den automatiskt läggs till igen. Verifierat med OBJ-1001, 4 av 4 exemplar.
+- Tomt antalval ersätts av Inga fler att lägga till när tillgängligt antal är slut.
+- Returbekräftelsen visar antal återlämnade och skadade utan ordet karantän; lagerspärren för skadat material är oförändrad.
+- Skadebeskrivning döljs vid 0 skadade och visas/krävs vid skada i både retursidan och jobbkortets formulär. Beskrivningen rensas när skadeantalet återställs till 0.
+
+## V1.15.0 - 2026-10-23
+
+- Sök och språk ligger intill inloggningen till höger; objektinformation kan fällas ut med Visa mer.
+- Låntagarformuläret saknar rollval. Manuell lånetillåtelse visas bara vid redigering och skiljs från inaktivitetsvarningen.
+- Jobb godkänns, förbereds och lämnas ut gemensamt; enskild framflyttning av flerartikeljobb stoppas även i API:t.
+- Jobbkortets återlämning frågar efter antal och skador. Kortet visar återlämnat och kvarvarande antal; API:ts skydd mot dubbla returer återanvänds.
+- Inaktiverad SMS-symbol bredvid hämtningsmejlet visar att SMS är en framtida funktion.
+
+## V1.14.0 - 2026-10-23
+
+- System → Allmänt: sparade inställningar för inaktivitetsvarning och antal dagar (standard 365), utan automatisk spärr eller radering.
+- Märkningen Inaktiv visas vid låntagarens namn, med undantag för kvarvarande lån, öppna jobb och olösta skador.
+- Admin-klocka med valbara notiser för nya förfrågningar och faktisk utlåning; lästa notiser sparas per konto och typ. Inga externa utskick.
+- Senaste utlåningsdatum bevaras vid gallring av lånehistorik. Regler kan ändras utan att konfigurera e-post eller Teams.
+
+## V1.13.5 - 2026-10-23
+
+- Lånekorgen begränsar antal till tillgängligt lager och räknar av redan tillagda exemplar i val, sökförslag och kvarvarande mängd.
+- Ändring och borttagning i korgen uppdaterar mängden direkt; ogiltiga antal stoppas med felmeddelande.
+- Aktuellt lager hämtas innan förfrågan skickas. Servern kontrollerar sammanlagda artikelantal och avvisar hela förfrågan vid lagerbrist.
+- Korgen och nya förfrågningar reserverar inte lagret; lagersaldot ändras fortfarande vid faktisk utlåning.
+
+## V1.13.4 - 2026-10-23
+
+- Låna: vald användares extrauppgifter är infällda från början och kan öppnas med Visa mer/Visa mindre.
+- Uppgifterna fälls in när användaren byts; svenska, engelska och tangentbordsstyrning stöds.
+
+## V1.13.3 - 2026-10-23
+
+- Genvägar använder en separat versionsmärkt boxikon i stället för EXE-filens tidigare ikonreferens.
+- Installationstest verifierar ikonfil och genvägar även efter ominstallation med en gammal ikonreferens.
 
 ## V1.13.2 - 2026-10-23
 

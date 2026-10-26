@@ -61,6 +61,9 @@ def export_subject(user_id):
                     "SELECT r.* FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id WHERE l.user_id = ?", (user_id,))],
                 "requests": [dict(r) for r in db.execute("SELECT * FROM loan_requests WHERE user_id = ?", (user_id,))],
                 "accounts": [dict(r) for r in db.execute("SELECT username, role FROM access_accounts WHERE user_id = ?", (user_id,))],
+                "notification_read_state": [dict(r) for r in db.execute(
+                    """SELECT r.* FROM admin_notification_reads r
+                       JOIN access_accounts a ON a.username = r.username WHERE a.user_id = ?""", (user_id,))],
                 "security_audit": [dict(r) for r in db.execute("SELECT * FROM security_audit WHERE user_id = ?", (user_id,))],
                 "legacy_events_for_manual_review": _legacy_events(db, user),
                 "scope": "Aktuell databas. Granska äldre fritext, säkerhetskopior, exporter, mejl och Git-historik separat. Loggträffar kan avse andra personer och måste granskas före utlämnande."}

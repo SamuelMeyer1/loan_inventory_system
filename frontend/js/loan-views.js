@@ -4,13 +4,47 @@
 // Uppdaterar informationsrutor nar anvandaren skriver i formular.
 // ============================================================
 
-function updateCheckoutInfo(selectedItem = null) {
-  const objectId = $("#checkoutObjectId").value.trim();
-  const term = objectId.toLowerCase();
-  const item = selectedItem || state.objects.find((objectItem) =>
-    objectItem.object_id.toLowerCase() === term || objectItem.name.toLowerCase() === term
+function selectedCheckoutObject() {
+  const term = $("#checkoutObjectId").value.trim().toLowerCase();
+  const selected = state.objects.find((item) => item.object_id === $("#checkoutObjectInstrumentId").value);
+  if (selected && [selected.object_id.toLowerCase(), selected.name.toLowerCase()].includes(term)) return selected;
+  return state.objects.find((item) =>
+    item.object_id.toLowerCase() === term || item.name.toLowerCase() === term
   );
-  const details = $("#checkoutInfo");
+}
+
+function remainingLoanQuantity(item) {
+  const inCart = state.loanCart.reduce((sum, entry) => sum + (entry.object_id === item.object_id ? entry.quantity : 0), 0);
+  return Math.max(0, item.available_quantity - inCart);
+}
+
+function validateLoanArticle(item, quantity, available = item?.available_quantity) {
+  if (!item) throw new Error(t("checkout.articleUnavailable"));
+  if (isConsumableObject(item)) throw new Error(t("checkout.consumableNotLoanable"));
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error(t("checkout.positiveQuantity"));
+  if (!Number.isInteger(available) || available < 0) throw new Error(t("checkout.stockUnavailable"));
+  if (quantity > available) throw new Error(t("checkout.stockExceeded", { name: item.name, count: available }));
+}
+
+function updateCheckoutInfo(selectedItem = null) {
+  const item = selectedItem || selectedCheckoutObject();
+  const disclosure = $("#checkoutObjectDisclosure");
+  if (disclosure) {
+    const objectId = item?.object_id || "";
+    if (disclosure.dataset.objectId !== objectId) disclosure.open = false;
+    disclosure.dataset.objectId = objectId;
+    disclosure.hidden = !item;
+  }
+  $("#checkoutInfo").hidden = !item;
+  const quantity = $("#checkoutQuantity");
+  const remaining = item ? remainingLoanQuantity(item) : 0;
+  const maximum = item && !isConsumableObject(item) ? Math.min(Number(quantity.dataset.max || 20), remaining) : 0;
+  const previousQuantity = Number(quantity.value);
+  quantity.innerHTML = Array.from({ length: maximum }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("");
+  if (!maximum) quantity.innerHTML = `<option value="">${escapeHtml(t(item ? "checkout.noneRemaining" : "checkout.chooseArticle"))}</option>`;
+  quantity.disabled = maximum === 0;
+  quantity.value = maximum ? String(Math.min(Math.max(previousQuantity || 1, 1), maximum)) : "";
+  $("#addLoanArticle").disabled = maximum === 0;
   if (!item) {
     [
       "InstrumentId",
@@ -35,8 +69,53 @@ function updateCheckoutInfo(selectedItem = null) {
   $("#checkoutObjectDescription").value = item.description || "";
   $("#checkoutObjectLocation").value = item.location || "";
   $("#checkoutObjectLift").value = item.lift_tray || item.door_id || "";
-  $("#checkoutObjectQuantity").value = state.language === "en" ? `${item.available_quantity} of ${item.total_quantity}` : `${item.available_quantity} av ${item.total_quantity}`;
-  $("#checkoutObjectStatus").value = statusText(item.status || "");
+  $("#checkoutObjectQuantity").value = state.language === "en" ? `${remaining} of ${item.total_quantity}` : `${remaining} av ${item.total_quantity}`;
+  $("#checkoutObjectStatus").value = statusText(remaining === 0 ? "Slut" : item.status || "");
+}
+
+function syncReturnDamageDescription(prefix, loanId) {
+  const damaged = Number($(`[data-${prefix}-damaged="${loanId}"]`).value);
+  const description = $(`[data-${prefix}-description="${loanId}"]`);
+  const hasDamage = damaged > 0;
+  description.hidden = !hasDamage;
+  description.required = hasDamage;
+  const label = description.closest("label");
+  if (label) label.hidden = !hasDamage;
+  if (!hasDamage) description.value = "";
+}
+
+function bindReturnDamageFields(container, prefix) {
+  container.querySelectorAll(`[data-${prefix}-damaged]`).forEach((input) => {
+    const loanId = input.getAttribute(`data-${prefix}-damaged`);
+    syncReturnDamageDescription(prefix, loanId);
+    input.addEventListener("input", () => syncReturnDamageDescription(prefix, loanId));
+  });
+}
+
+function renderJobReturn() {
+  $("#jobReturnError").hidden = true;
+  $("#jobReturnError").textContent = "";
+  $("#jobReturnItems").innerHTML = state.jobReturnLoans.map((loan) => {
+    const remaining = loan.remaining_quantity ?? loan.quantity;
+    return `<fieldset class="job-return-item">
+      <legend>${escapeHtml(loan.object_name)} (${escapeHtml(loan.object_id)})</legend>
+      <p>${escapeHtml(t("jobs.returnRemaining", { count: remaining }))}</p>
+      <label>${escapeHtml(t("return.quantity"))}
+        <input type="number" min="0" max="${remaining}" step="1" value="0" required data-job-return-quantity="${loan.loan_id}">
+      </label>
+      <label>${escapeHtml(t("return.damaged"))}
+        <input type="number" min="0" max="${remaining}" step="1" value="0" required data-job-return-damaged="${loan.loan_id}">
+      </label>
+      <label hidden>${escapeHtml(t("return.description"))}
+        <textarea hidden maxlength="2000" rows="2" data-job-return-description="${loan.loan_id}" placeholder="${escapeHtml(t("return.descriptionHint"))}"></textarea>
+      </label>
+    </fieldset>`;
+  }).join("");
+  bindReturnDamageFields($("#jobReturnItems"), "job-return");
+}
+
+function setJobReturnBusy(busy) {
+  $("#jobReturnForm").querySelectorAll("fieldset, button").forEach((element) => { element.disabled = busy; });
 }
 
 function renderReturnLoans(preserveDraft = false) {
@@ -61,7 +140,7 @@ function renderReturnLoans(preserveDraft = false) {
       <td>${loan.remaining_quantity ?? loan.quantity}<small class="request-reference">${t("return.alreadyReturned", { count: loan.returned_quantity || 0 })}</small></td>
       <td><input class="return-quantity" type="number" min="1" max="${loan.remaining_quantity ?? loan.quantity}" step="1" value="${loan.remaining_quantity ?? loan.quantity}" data-return-quantity="${loan.loan_id}" aria-label="${escapeHtml(t("return.quantity") + ' ' + loan.object_name)}"></td>
       <td><input class="return-quantity" type="number" min="0" max="${loan.remaining_quantity ?? loan.quantity}" step="1" value="0" data-return-damaged="${loan.loan_id}" aria-label="${escapeHtml(t("return.damaged") + ' ' + loan.object_name)}"></td>
-      <td><textarea maxlength="2000" rows="2" data-return-description="${loan.loan_id}" aria-label="${escapeHtml(t("return.description") + ' ' + loan.object_name)}" placeholder="${escapeHtml(t("return.descriptionHint"))}"></textarea></td>
+      <td><textarea hidden maxlength="2000" rows="2" data-return-description="${loan.loan_id}" aria-label="${escapeHtml(t("return.description") + ' ' + loan.object_name)}" placeholder="${escapeHtml(t("return.descriptionHint"))}"></textarea></td>
       <td>${formatTime(loan.due_time)}</td>
     </tr>
   `).join("");
@@ -74,6 +153,7 @@ function renderReturnLoans(preserveDraft = false) {
     $(`[data-return-description="${item.id}"]`).value = item.description;
   });
 
+  bindReturnDamageFields(body, "return");
   body.querySelectorAll("[data-return-quantity], [data-return-damaged], [data-return-description]").forEach((input) => {
     input.addEventListener("input", () => {
       const id = input.dataset.returnQuantity || input.dataset.returnDamaged || input.dataset.returnDescription;
@@ -329,22 +409,15 @@ function printLoanReceipt(loanId) {
 }
 
 function addLoanArticle() {
-  const term = $("#checkoutObjectId").value.trim().toLowerCase();
-  const selectedId = $("#checkoutObjectInstrumentId").value;
-  const selected = state.objects.find((object) => object.object_id === selectedId);
-  const item = selected && [selected.object_id.toLowerCase(), selected.name.toLowerCase()].includes(term)
-    ? selected : state.objects.find((object) => object.object_id.toLowerCase() === term || object.name.toLowerCase() === term);
-  if (!item) throw new Error(state.language === "en" ? "Select an article first." : "Välj en artikel först.");
-  if (isConsumableObject(item)) throw new Error(state.language === "en" ? "Consumables cannot be borrowed." : "Förbrukningsvaror kan inte lånas.");
+  const item = selectedCheckoutObject();
   const quantity = Number($("#checkoutQuantity").value);
-  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error(state.language === "en" ? "Enter a positive whole quantity." : "Ange ett positivt heltal.");
+  validateLoanArticle(item, quantity, item ? remainingLoanQuantity(item) : 0);
   const existing = state.loanCart.find((entry) => entry.object_id === item.object_id);
   if (existing) existing.quantity += quantity;
   else state.loanCart.push({ object_id: item.object_id, name: item.name, quantity });
   $("#checkoutObjectId").value = "";
   $("#checkoutQuantity").value = "1";
   $("#checkoutObjectSuggestions").classList.remove("visible");
-  updateCheckoutInfo();
   renderLoanCart();
   $("#checkoutObjectId").focus();
 }
@@ -353,20 +426,38 @@ function renderLoanCart() {
   const en = state.language === "en";
   $("#addLoanArticle").textContent = en ? "Add article" : "Lägg till artikel";
   $("#loanCartTitle").textContent = en ? "Articles in this request" : "Artiklar i låneförfrågan";
-  $("#loanCart").innerHTML = state.loanCart.length ? state.loanCart.map((item, index) => `
-    <div class="loan-cart-row"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.object_id)}</small></span>
-      <label>${en ? "Quantity" : "Antal"}<input type="number" min="1" step="1" value="${item.quantity}" data-cart-quantity="${index}"></label>
+  $("#loanCart").innerHTML = state.loanCart.length ? state.loanCart.map((item, index) => {
+    const stock = state.objects.find((object) => object.object_id === item.object_id);
+    const available = stock ? stock.available_quantity : 0;
+    const invalid = !stock || isConsumableObject(stock) || item.quantity > available;
+    const stockText = stock
+      ? t("checkout.cartStock", { count: remainingLoanQuantity(stock), available, inCart: item.quantity })
+      : t("checkout.articleUnavailable");
+    return `
+    <div class="loan-cart-row"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.object_id)}</small>
+      <small>${escapeHtml(stockText)}</small>
+      ${invalid ? `<small class="cart-stock-warning" role="status">${escapeHtml(t("checkout.cartStockChanged"))}</small>` : ""}</span>
+      <label>${en ? "Quantity" : "Antal"}<input type="number" min="1" max="${available}" step="1" value="${item.quantity}" aria-invalid="${invalid}" data-cart-quantity="${index}"></label>
       <button class="danger-button" type="button" data-cart-remove="${index}" aria-label="${escapeHtml((en ? 'Remove ' : 'Ta bort ') + item.name)}">${en ? "Remove" : "Ta bort"}</button>
-    </div>`).join("") : `<p>${en ? "Select an article and click Add article. Repeat to add more." : "Välj en artikel och tryck Lägg till artikel. Upprepa för att lägga till fler."}</p>`;
+    </div>`;
+  }).join("") : `<p>${en ? "Select an article and click Add article. Repeat to add more." : "Välj en artikel och tryck Lägg till artikel. Upprepa för att lägga till fler."}</p>`;
   document.querySelectorAll("[data-cart-remove]").forEach((button) => button.addEventListener("click", () => {
     state.loanCart.splice(Number(button.dataset.cartRemove), 1); renderLoanCart();
   }));
   document.querySelectorAll("[data-cart-quantity]").forEach((input) => input.addEventListener("change", () => {
     const item = state.loanCart[Number(input.dataset.cartQuantity)];
     const quantity = Number(input.value);
-    if (Number.isInteger(quantity) && quantity > 0) item.quantity = quantity;
-    else input.value = item.quantity;
+    try {
+      validateLoanArticle(state.objects.find((object) => object.object_id === item.object_id), quantity);
+      item.quantity = quantity;
+      renderLoanCart();
+    } catch (error) {
+      input.value = String(item.quantity);
+      showToast(error.message);
+    }
   }));
+  updateCheckoutInfo();
+  if ($("#checkoutObjectSuggestions").classList.contains("visible")) renderCheckoutObjectSuggestions();
 }
 
 function updateReturnButtons() {

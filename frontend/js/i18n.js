@@ -49,6 +49,30 @@ function setHeaderTexts(selector, keys) {
 }
 
 function applyTranslations() {
+  const adminTexts = {
+    "#adminRulesDescription": "settings.rulesDescription",
+    "#inactivitySettingsTitle": "settings.inactivityTitle",
+    "#inactiveUserWarningLabel": "settings.inactivityEnabled",
+    "#inactiveUserDaysLabel": "settings.inactivityDays",
+    "#inactiveUserHelp": "settings.inactivityHelp",
+    "#adminNotificationSettingsTitle": "notifications.settingsTitle",
+    "#notifyAdminNewRequestLabel": "notifications.request",
+    "#notifyAdminLoanedLabel": "notifications.loan",
+    "#adminNotificationSettingsHelp": "notifications.settingsHelp",
+    "#adminNotificationsTitle": "notifications.title",
+    "#adminNotificationsHelp": "notifications.help",
+    "#markAdminNotificationsRead": "notifications.markRead",
+    "#adminNotificationJobs": "notifications.jobs",
+    "#newUserActiveLabel": "admin.activeUser",
+    "#newUserActiveHelp": "admin.activeUserHelp",
+    "#borrowerProfileHelp": "admin.borrowerProfileHelp",
+    "#jobReturnTitle": "jobs.returnArticles",
+    "#jobReturnHelp": "jobs.returnHelp",
+    "#saveJobReturn": "jobs.returnSave",
+    "#cancelJobReturn": "action.cancel",
+  };
+  Object.entries(adminTexts).forEach(([selector, key]) => setText(selector, key));
+  renderAdminNotifications();
   ["newUser", "quickUser"].forEach((prefix) => {
     setText(`#${prefix}PrivacyText`, "privacy.acknowledge");
     setText(`#${prefix}PrivacyLink`, "privacy.read");
@@ -76,9 +100,6 @@ function applyTranslations() {
   setOptionText("roleSelect", "operator", "role.operator");
   setOptionText("roleSelect", "admin", "role.admin");
   setOptionText("roleSelect", "superadmin", "role.superadmin");
-  setOptionText("newUserRole", "operator", "role.operator");
-  setOptionText("newUserRole", "admin", "role.admin");
-  setOptionText("newUserRole", "superadmin", "role.superadmin");
 
   setText(".dashboard-command-button[data-view-target=\"checkout\"]", "dashboard.borrow");
   setText(".dashboard-command-button[data-view-target=\"pickup\"]", "dashboard.pickup");
@@ -99,6 +120,10 @@ function applyTranslations() {
   setText(".checkout-action-row span", "checkout.missingUser");
   setText("#openQuickUserButton", "checkout.createUser");
   setText("#openUserScanButton", "checkout.scanUser");
+  setText("#checkoutUserShowMore", "checkout.showUserDetails");
+  setText("#checkoutUserShowLess", "checkout.hideUserDetails");
+  setText("#checkoutObjectShowMore", "checkout.showUserDetails");
+  setText("#checkoutObjectShowLess", "checkout.hideUserDetails");
   setText("#userScanTitle", "checkout.scanUser");
   setText("#userScanStatusTitle", "checkout.scanWaiting");
   setText("#userScanStatusText", "checkout.scanFuture");
@@ -128,7 +153,7 @@ function applyTranslations() {
     ["checkoutObjectDescription", "field.description"],
     ["checkoutObjectLocation", "field.location"],
     ["checkoutObjectLift", "field.lift"],
-    ["checkoutObjectQuantity", "field.stockQty"],
+    ["checkoutObjectQuantity", "checkout.remainingStock"],
     ["checkoutObjectStatus", "field.status"],
     ["checkoutEngineId", "field.engineId"],
     ["checkoutProjectNumber", "field.projectNumber"],
@@ -145,7 +170,6 @@ function applyTranslations() {
     ["newUserAlias", "field.alias"],
     ["newUserDepartment", "field.department"],
     ["newUserDepartmentName", "field.group"],
-    ["newUserRole", "topbar.role"],
     ["quickUserFirstName", "field.firstName"],
     ["quickUserLastName", "field.lastName"],
     ["quickUserEmail", "field.email"],

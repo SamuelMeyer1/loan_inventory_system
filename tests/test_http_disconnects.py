@@ -80,6 +80,11 @@ class ResponseDisconnectTest(unittest.TestCase):
 
 
 class ServerStartupOrderTest(unittest.TestCase):
+    def setUp(self):
+        marker_check = patch("backend.server.is_simulation", return_value=False)
+        marker_check.start()
+        self.addCleanup(marker_check.stop)
+
     def test_actual_socket_does_not_accept_clients_during_initialization(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler, bind_and_activate=False)
         self.addCleanup(server.server_close)

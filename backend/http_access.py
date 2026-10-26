@@ -10,13 +10,14 @@ from backend.services import privacy
 
 _initialization_lock = threading.Lock()
 READ = {"/api/stats", "/api/objects", "/api/search", "/api/users", "/api/loans", "/api/loan-requests", "/api/system-settings"}
-ADMIN_READ = {"/api/statistics", "/api/groups", "/api/consumable-reports", "/api/damaged-returns"}
+ADMIN_READ = {"/api/statistics", "/api/groups", "/api/consumable-reports", "/api/damaged-returns", "/api/admin-notifications"}
 SUPER_READ = {"/api/events", "/api/privacy/export", "/api/privacy/policy", "/api/privacy/retention", "/api/privacy/erase"}
 ADMIN_WRITE = {
     ("POST", path) for path in ("/api/checkout", "/api/issue", "/api/objects", "/api/users", "/api/users/borrow-override", "/api/users/card", "/api/smartcard/read", "/api/users/scan-card", "/api/groups", "/api/loans/reminder", "/api/loan-requests/pickup-email")
 } | {("PUT", path) for path in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests/details", "/api/consumable-reports")} | {
     ("DELETE", path) for path in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests")}
 ADMIN_WRITE.add(("POST", "/api/damaged-returns/resolve"))
+ADMIN_WRITE.add(("POST", "/api/admin-notifications/read"))
 SUPER_WRITE = {("PUT", "/api/system-settings"), ("POST", "/api/reminders/send"), ("POST", "/api/teams/test"),
                ("PUT", "/api/privacy/policy"), ("POST", "/api/privacy/erase"), ("POST", "/api/privacy/retention")}
 
@@ -205,11 +206,15 @@ class AccessMixin:
                     data = [r for r in data if r.get("user_id") == self.identity["user_id"]]
                 payload["data"] = [{
                     key: value for key, value in user.items()
-                    if key not in ("rfid_code", "privacy_notice_acknowledged_at")
+                    if key not in ("rfid_code", "privacy_notice_acknowledged_at", "last_borrowed_at",
+                                   "inactive_for_days", "has_pending_activity", "inactivity_warning",
+                                   "inactivity_threshold_days")
                 } for user in data]
             elif self.command == "GET" and self.api_path in ("/api/loans", "/api/loan-requests"):
                 if not self.identity.get("anonymous"):
                     payload["data"] = [r for r in data if r.get("user_id") == self.identity["user_id"]]
+                for item in payload["data"]:
+                    item.pop("unresolved_damage_description", None)
             elif self.command == "GET" and self.api_path == "/api/stats":
                 payload["data"] = {"objects": data.get("objects", 0), "low_stock": data.get("low_stock", 0)}
         return payload

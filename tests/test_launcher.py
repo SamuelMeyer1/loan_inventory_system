@@ -35,8 +35,8 @@ class LauncherConfigTest(unittest.TestCase):
             second = prepare_server("simulation", str(self.database), "", "8001", self.storage)
             self.assertEqual(os.environ["LOAN_HOST"], "10.1.2.3")
         command, env, url, path = first
-        self.assertEqual(path.stat().st_size, 0)
-        self.assertNotEqual(path, second[3])
+        self.assertGreater(path.stat().st_size, 0)
+        self.assertEqual(path, second[3])
         self.assertEqual(path.parent, self.storage / "simulations")
         self.assertEqual(self.database.read_bytes(), original)
         self.assertEqual(env["LOAN_HOST"], "127.0.0.1")
@@ -100,7 +100,7 @@ class LauncherConfigTest(unittest.TestCase):
         with patch.dict(os.environ, {"LOAN_SIMULATION": "1", "LOAN_DATABASE_PATH": str(self.database)}), \
                 patch.object(database, "DATABASE_PATH", self.database), \
                 patch("backend.server.initialize_database") as initialize:
-            with self.assertRaisesRegex(ValueError, "ny tom separat"):
+            with self.assertRaisesRegex(ValueError, "simuleringsdatabas"):
                 run_server("127.0.0.1")
             initialize.assert_not_called()
         self.assertEqual(self.database.read_bytes(), b"Do not replace this file")
@@ -172,7 +172,7 @@ class SimulationServerTest(unittest.TestCase):
                 guest, _ = call("api/auth/session")
                 self.assertTrue(guest["anonymous"])
                 users, _ = call("api/users")
-                self.assertEqual(len(users), 4)
+                self.assertEqual(len(users), 14)
                 objects, _ = call("api/objects")
                 self.assertEqual(len(objects), 8)
                 for username in ("admin", "superadmin"):
@@ -187,12 +187,12 @@ class SimulationServerTest(unittest.TestCase):
                             "due_time": (date.today() + timedelta(days=1)).isoformat(),
                         }, cookie, identity["csrf"])
                         stock, _ = call("api/objects", cookie=cookie)
-                        self.assertEqual(next(item for item in stock if item["object_id"] == "OBJ-1001")["available_quantity"], 3)
+                        self.assertEqual(next(item for item in stock if item["object_id"] == "OBJ-1001")["available_quantity"], 0)
                         returned, _ = call("api/return", {"user_id": "USR-001", "loan_ids": [loan["loan_id"]]},
                                            cookie, identity["csrf"])
                         self.assertEqual(returned["loan_ids"], [loan["loan_id"]])
                         stock, _ = call("api/objects", cookie=cookie)
-                        self.assertEqual(next(item for item in stock if item["object_id"] == "OBJ-1001")["available_quantity"], 4)
+                        self.assertEqual(next(item for item in stock if item["object_id"] == "OBJ-1001")["available_quantity"], 1)
                     call("api/auth/logout", {}, cookie, identity["csrf"])
                     guest, _ = call("api/auth/session", cookie=cookie)
                     self.assertTrue(guest["anonymous"])

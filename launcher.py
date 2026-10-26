@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from http.client import HTTPException
 from queue import Empty, Queue
 from threading import Thread
 import uuid
@@ -19,6 +20,8 @@ from urllib.request import ProxyHandler, build_opener
 from app_runtime import default_database, is_frozen, storage_directory
 from app_version import RELEASES_URL, VERSION
 from app_icon import icon_png
+from app_updates import UpdateCheck, check_for_updates
+from simulation_store import prepare_simulation, reset_simulation, simulation_path
 
 ROOT = Path(__file__).resolve().parent
 MODES = {
@@ -59,11 +62,7 @@ def prepare_server(mode: str, database: str, host: str, port: str,
             raise ValueError("LAN-start kräver en privat IPv4-adress, inte en wildcard-adress.")
         bind_host = str(address)
     if mode == "simulation":
-        directory = storage / "simulations"
-        directory.mkdir(parents=True, exist_ok=True)
-        database_path = directory / f"simulation-{uuid.uuid4().hex}.db"
-        # Exclusive creation prevents reuse or replacement of an existing database.
-        database_path.touch(exist_ok=False)
+        database_path = prepare_simulation(storage)
     else:
         database_path = Path(database).expanduser().resolve()
         if not database.strip() or not database_path.is_file():
@@ -75,7 +74,7 @@ def prepare_server(mode: str, database: str, host: str, port: str,
         "LOAN_HOST": bind_host,
         "LOAN_DATABASE_PATH": str(database_path),
         "LOAN_ALLOW_LAN": "1" if mode == "lan" else "0",
-        "LOAN_SEED_DEMO": "1" if mode == "simulation" else "0",
+        "LOAN_SEED_DEMO": "0",
         "LOAN_LOCAL_FIXED_TEST_CREDENTIALS": "1" if mode == "simulation" else "0",
         "LOAN_SIMULATION": "1" if mode == "simulation" else "0",
         "LOAN_ENABLE_NOTIFICATIONS": "0",
@@ -117,6 +116,9 @@ class Launcher:
         self.next_probe = 0.0
         self.probe_pending = False
         self.health_results: Queue[tuple[str, float | None, str]] = Queue()
+        self.update_results: Queue[tuple[UpdateCheck | None, str]] = Queue()
+        self.update_check_id: str | None = None
+        self.update_check_running = False
         self.log_offset = 0
         self.log_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.last_log_error = ""
@@ -126,14 +128,17 @@ class Launcher:
         self.host = tk.StringVar(value="")
         self.port = tk.StringVar(value="8000")
         self.status = tk.StringVar(value="Stoppad")
+        self.update_status = tk.StringVar(value="Uppdateringar kontrolleras vid start.")
         frame = ttk.Frame(self.root, padding=20)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Loan Inventory", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        self.updates_button = ttk.Button(
-            frame, text="Öppna versionssidan i webbläsaren", command=self.open_releases)
-        self.updates_button.pack(anchor="w", pady=(6, 0))
-        ttk.Label(frame, text="Privat GitHub · inloggning krävs · ingen automatisk kontroll",
-                  wraplength=550).pack(anchor="w")
+        updates = ttk.Frame(frame)
+        updates.pack(fill="x", pady=(6, 0))
+        self.check_updates_button = ttk.Button(updates, text="Sök uppdateringar", command=self.check_updates)
+        self.check_updates_button.pack(side="left")
+        self.updates_button = ttk.Button(updates, text="Versionssida", command=self.open_releases)
+        self.updates_button.pack(side="left", padx=8)
+        ttk.Label(frame, textvariable=self.update_status, wraplength=550).pack(anchor="w")
         modes = ttk.Frame(frame)
         modes.pack(fill="x", pady=(12, 8))
         for value, label in MODES.items():
@@ -148,6 +153,9 @@ class Launcher:
         self.browse_button.pack(side="left")
         self.new_button = ttk.Button(buttons, text="Ny databas...", command=self.new_database)
         self.new_button.pack(side="left", padx=8)
+        self.reset_simulation_button = ttk.Button(
+            buttons, text="Återställ demodata...", command=self.reset_demo)
+        self.reset_simulation_button.pack(side="right")
         fields = ttk.Frame(frame)
         fields.pack(fill="x", pady=6)
         ttk.Label(fields, text="LAN-adress").grid(row=0, column=0, sticky="w")
@@ -176,6 +184,10 @@ class Launcher:
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.load_preferences()
         self.update_fields()
+        if os.environ.get("LOAN_SKIP_UPDATE_CHECK") == "1":
+            self.update_status.set("Automatisk uppdateringskontroll avstängd för denna start.")
+        else:
+            self.update_check_id = self.root.after(200, self.check_updates)
 
     def report_error(self, error: Exception | str) -> None:
         from tkinter import messagebox
@@ -216,11 +228,31 @@ class Launcher:
         for widget in (self.database_entry, self.browse_button, self.new_button):
             widget.configure(state="normal" if mode in ("local", "lan") else "disabled")
         self.host_entry.configure(state="normal" if mode == "lan" else "disabled")
+        self.reset_simulation_button.configure(
+            state="normal" if mode == "simulation" and self.process is None else "disabled")
         self.help_text.configure(text={
-            "simulation": "Ny fejkdatabas · Inga utskick/kortläsare · admin/admin",
+            "simulation": f"Sparad demo · Teständringar finns kvar · Inga utskick/kortläsare · admin/admin\n{simulation_path(self.storage)}",
             "local": "Endast denna dator · Vald databas · Inga externa utskick",
             "lan": "Delas på nätverket · Endast fejkdata · Inga externa utskick",
         }[mode])
+
+    def reset_demo(self) -> None:
+        from tkinter import messagebox
+        if self.mode.get() != "simulation" or self.process is not None:
+            self.report_error("Stoppa servern och välj Simulering innan du återställer demodata.")
+            return
+        if not messagebox.askokcancel(
+                "Återställ demodata",
+                "Återskapa den påhittade demonstrationen vid nästa start? Dina teständringar "
+                "läggs i en separat säkerhetskopia. Den riktiga databasen påverkas inte.",
+                parent=self.root):
+            return
+        try:
+            backup = reset_simulation(self.storage)
+            self.status.set("Demodata återskapas vid nästa start.")
+            self.append_log(f"[DEMO] Återställning klar. Tidigare demo: {backup or 'ingen'}\n")
+        except (OSError, ValueError) as error:
+            self.report_error(error)
 
     def append_log(self, text: str) -> None:
         at_bottom = self.console.yview()[1] >= 0.99
@@ -322,6 +354,7 @@ class Launcher:
             self.deadline = time.monotonic() + 60
             self.start_button.configure(state="disabled")
             self.stop_button.configure(state="normal")
+            self.reset_simulation_button.configure(state="disabled")
             self.status.set("Startar...")
             self.append_log(f"\n[START] {self.url}\nDatabas: {database}\nLoggfil: {self.log_path}\n")
             self.check_id = self.root.after(200, self.check_process)
@@ -339,6 +372,7 @@ class Launcher:
             self.start_button.configure(state="normal")
             self.stop_button.configure(state="disabled")
             self.open_button.configure(state="disabled")
+            self.update_fields()
             self.report_error(f"Servern avslutades (kod {code}). Felorsaken finns i:\n{self.log_path}")
             return
         while True:
@@ -377,6 +411,66 @@ class Launcher:
         if not webbrowser.open(self.url):
             self.report_error(f"Kunde inte öppna webbläsaren. Öppna adressen manuellt:\n{self.url}")
 
+    def check_updates(self) -> None:
+        if self.update_check_running:
+            return
+        if self.update_check_id is not None:
+            self.root.after_cancel(self.update_check_id)
+            self.update_check_id = None
+        self.update_check_running = True
+        self.check_updates_button.configure(state="disabled")
+        self.update_status.set("Söker efter uppdateringar på GitHub...")
+
+        def run() -> None:
+            try:
+                self.update_results.put((check_for_updates(), ""))
+            except (OSError, ValueError, HTTPException) as error:
+                self.update_results.put((None, str(error)))
+
+        Thread(target=run, daemon=True).start()
+        self.update_check_id = self.root.after(100, self.receive_update_check)
+
+    def receive_update_check(self) -> None:
+        from tkinter import messagebox
+        self.update_check_id = None
+        try:
+            result, error = self.update_results.get_nowait()
+        except Empty:
+            self.update_check_id = self.root.after(100, self.receive_update_check)
+            return
+        self.update_check_running = False
+        self.check_updates_button.configure(state="normal")
+        if error or result is None:
+            self.report_update_error(error or "Versionskontrollen saknar resultat.")
+            return
+        if result.latest_version is None:
+            self.update_status.set("Ingen publicerad release kunde hittas. Programmet kan startas som vanligt.")
+            return
+        release = result.available
+        if release is None:
+            self.update_status.set(f"Ingen nyare version. Installerad/körd version: {VERSION}. Senaste publicerade: {result.latest_version}.")
+            return
+        self.update_status.set(f"Version {release.version} finns att ladda ner. Du har {VERSION}.")
+        source_note = "" if is_frozen() else "\nBAT-startens källkod uppdateras inte av installationsfilen."
+        if messagebox.askyesno(
+                "Uppdatering finns",
+                f"Version {release.version} finns tillgänglig. Du har {VERSION}.\n\n"
+                f"{release.notes or 'Versionsinformation finns på versionssidan.'}\n\n"
+                "Vill du ladda ner installationsfilen i din webbläsare?\n"
+                "Stoppa servern och stäng startfönstret före installation. "
+                "Databas och inställningar behålls. Filen är osignerad."
+                f"{source_note}", parent=self.root):
+            try:
+                if not webbrowser.open(release.download_url):
+                    raise OSError("Webbläsaren kunde inte öppnas. Använd knappen Versionssida.")
+                self.update_status.set("Nedladdningen har öppnats i webbläsaren. Stoppa servern och stäng detta fönster före installation. Ingen installation startas automatiskt.")
+            except OSError as error:
+                self.report_update_error(str(error))
+
+    def report_update_error(self, error: str) -> None:
+        self.update_status.set("Uppdateringskontrollen misslyckades – se loggen. Programmet kan startas som vanligt.")
+        self.append_log(f"[UPPDATERING FEL] {error}\n")
+
     def open_releases(self) -> None:
         try:
             if not webbrowser.open(RELEASES_URL):
@@ -402,6 +496,7 @@ class Launcher:
         self.start_button.configure(state="normal")
         self.stop_button.configure(state="disabled")
         self.open_button.configure(state="disabled")
+        self.update_fields()
         self.status.set("Stoppad")
         self.append_log("[STOPP] Servern stoppad. Databasen finns kvar.\n")
 
@@ -413,6 +508,9 @@ class Launcher:
             self.stop()
             if self.process is not None:
                 return
+        if self.update_check_id is not None:
+            self.root.after_cancel(self.update_check_id)
+            self.update_check_id = None
         self.root.destroy()
 
 

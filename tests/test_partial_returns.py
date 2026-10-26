@@ -166,6 +166,10 @@ class PartialReturnsTest(unittest.TestCase):
         loans.update_loan_request_status({"request_id": request, "status": "loaned"})
         loan_id = database.row("SELECT loan_id FROM loans WHERE loan_request_id=?", (request,))["loan_id"]
         loans.return_item(self.payload(2, 1, loan_id=loan_id))
+        item = next(item for item in loans.list_loan_requests() if item["request_id"] == request)
+        self.assertEqual((item["returned_quantity"], item["remaining_quantity"], item["unresolved_damage_quantity"]), (2, 2, 1))
+        self.assertEqual(item["unresolved_damage_description"], "Broken housing")
+        self.assertEqual(item["stocking_blocked"], 1)
         self.assertEqual(database.row("SELECT status FROM loan_requests WHERE request_id=?", (request,))["status"], "loaned")
         loans.update_loan_request_group_status({"request_group_id": request, "status": "returned"})
         self.assertEqual(database.row("SELECT available_quantity FROM objects WHERE object_id='B'")["available_quantity"], 9)
@@ -177,6 +181,10 @@ class PartialReturnsTest(unittest.TestCase):
         loans.resolve_damaged_return({"return_id": loans.list_damaged_returns()[0]["return_id"],
                                      "resolution": "repaired", "confirmed": True})
         loans.update_loan_request_group_status({"request_group_id": request, "status": "stocked"})
+        item = next(item for item in loans.list_loan_requests() if item["request_id"] == request)
+        self.assertEqual((item["returned_quantity"], item["remaining_quantity"], item["unresolved_damage_quantity"]), (4, 0, 0))
+        self.assertEqual(item["unresolved_damage_description"], "")
+        self.assertEqual(item["stocking_blocked"], 0)
         self.assertEqual(database.row("SELECT available_quantity FROM objects WHERE object_id='B'")["available_quantity"], 10)
 
     def test_identifier_returns_only_remaining_and_checks_optional_owner(self):

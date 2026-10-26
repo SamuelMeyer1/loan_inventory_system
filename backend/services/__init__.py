@@ -27,6 +27,8 @@ from backend.services.loans import (
     update_loan_request_status,
 )
 from backend.services.notifications import (
+    list_admin_notifications,
+    mark_admin_notifications_read,
     get_public_system_settings,
     get_system_settings,
     send_loan_reminder,
@@ -72,6 +74,8 @@ __all__ = [
     "list_loan_requests",
     "list_objects",
     "list_users",
+    "list_admin_notifications",
+    "mark_admin_notifications_read",
     "recent_events",
     "read_card_uid",
     "read_user_card",

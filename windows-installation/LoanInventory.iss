@@ -9,8 +9,12 @@
 #endif
 #ifndef TestInstall
   #define ProductId "LoanInventory.SamuelMeyer1"
+  #define MenuShortcuts "{group}"
+  #define DesktopShortcuts "{autodesktop}"
 #else
   #define ProductId "LoanInventory.SamuelMeyer1.PackagingTest"
+  #define MenuShortcuts "{app}\test-shortcuts\Start Menu"
+  #define DesktopShortcuts "{app}\test-shortcuts\Desktop"
 #endif
 
 [Setup]
@@ -19,7 +23,7 @@ AppName=Loan Inventory
 AppVersion={#AppVersion}
 AppPublisher=Samuel Meyer
 AppPublisherURL=https://github.com/SamuelMeyer1/loan_inventory_system
-AppUpdatesURL=https://github.com/SamuelMeyer1/loan_inventory_system/releases
+AppUpdatesURL=https://github.com/SamuelMeyer1/loan-inventory-releases/releases
 DefaultDirName={localappdata}\Programs\LoanInventory
 DefaultGroupName=Loan Inventory
 PrivilegesRequired=lowest
@@ -32,7 +36,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\build\windows\loan-inventory.ico
-UninstallDisplayIcon={app}\LoanInventory.exe
+UninstallDisplayIcon={app}\LoanInventory-{#AppVersion}.ico
 AppMutex=Local\LoanInventorySystem.Running
 CloseApplications=no
 RestartApplications=no
@@ -50,12 +54,13 @@ Name: "desktopicon"; Description: "Skapa en genväg på skrivbordet"; Flags: unc
 
 [Files]
 Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\windows\loan-inventory.ico"; DestDir: "{app}"; DestName: "LoanInventory-{#AppVersion}.ico"; Flags: ignoreversion
+
+[Icons]
+Name: "{#MenuShortcuts}\Loan Inventory"; Filename: "{app}\LoanInventory.exe"; WorkingDir: "{app}"; IconFilename: "{app}\LoanInventory-{#AppVersion}.ico"; IconIndex: 0
+Name: "{#DesktopShortcuts}\Loan Inventory"; Filename: "{app}\LoanInventory.exe"; WorkingDir: "{app}"; IconFilename: "{app}\LoanInventory-{#AppVersion}.ico"; IconIndex: 0; Tasks: desktopicon
 
 #ifndef TestInstall
-[Icons]
-Name: "{group}\Loan Inventory"; Filename: "{app}\LoanInventory.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\Loan Inventory"; Filename: "{app}\LoanInventory.exe"; WorkingDir: "{app}"; Tasks: desktopicon
-
 [Run]
 Filename: "{app}\LoanInventory.exe"; Description: "Starta Loan Inventory"; Flags: nowait postinstall skipifsilent
 #endif

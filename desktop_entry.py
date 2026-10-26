@@ -18,11 +18,19 @@ def main() -> None:
             import smartcard.scard
             import sqlite3
             import tkinter
+            import ssl
+            import truststore
+            update_tls = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             print(json.dumps({
                 "version": VERSION, "python": sys.version.split()[0],
                 "sqlite": sqlite3.sqlite_version, "openpyxl": openpyxl.__version__,
                 "pyscard": True, "tk": tkinter.TkVersion,
                 "frozen": bool(getattr(sys, "frozen", False)),
+                "update_tls": {
+                    "provider": "truststore",
+                    "verify_required": update_tls.verify_mode == ssl.CERT_REQUIRED,
+                    "check_hostname": update_tls.check_hostname,
+                },
             }))
         else:
             from backend.manage_access import main as manage_access

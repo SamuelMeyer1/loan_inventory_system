@@ -42,9 +42,8 @@ class MultiArticleLoansTest(unittest.TestCase):
         })
 
     def activate(self, result):
-        for request_id in result['request_ids']:
-            loans.update_loan_request_status({"request_id": request_id, "status": "prepared"})
-            loans.update_loan_request_status({"request_id": request_id, "status": "loaned"})
+        for status in ("approved", "prepared", "loaned"):
+            loans.update_loan_request_group_status({"request_group_id": result["request_id"], "status": status})
 
     def stock(self, object_id):
         return database.row("SELECT available_quantity FROM objects WHERE object_id = ?", (object_id,))["available_quantity"]
@@ -132,6 +131,32 @@ class MultiArticleLoansTest(unittest.TestCase):
             self.request([{"object_id": "A"}, {"object_id": "missing"}])
         self.assertEqual(loans.list_loan_requests(), [])
         self.assertEqual(database.rows('SELECT * FROM events'), [])
+
+    def test_request_cannot_exceed_current_stock_even_with_duplicate_rows(self):
+        with database.connect() as db:
+            db.execute("UPDATE objects SET total_quantity=15, available_quantity=15 WHERE object_id='A'")
+        for items in (
+            [{"object_id": "A", "quantity": 16}],
+            [{"object_id": "A", "quantity": 8}, {"object_id": "A", "quantity": 8}],
+            [{"object_id": "B", "quantity": 1}, {"object_id": "A", "quantity": 16}],
+        ):
+            with self.subTest(items=items), self.assertRaisesRegex(ValueError, "15"):
+                self.request(items)
+            self.assertEqual(loans.list_loan_requests(), [])
+            self.assertEqual(database.rows("SELECT * FROM events"), [])
+            self.assertEqual(self.stock("A"), 15)
+
+    def test_request_at_stock_limit_does_not_reserve_inventory(self):
+        self.request([{"object_id": "A", "quantity": 10}])
+        self.assertEqual(loans.list_loan_requests()[0]["quantity"], 10)
+        self.assertEqual(self.stock("A"), 10)
+
+    def test_request_uses_latest_available_not_total_stock(self):
+        with database.connect() as db:
+            db.execute("UPDATE objects SET available_quantity=0 WHERE object_id='A'")
+        with self.assertRaisesRegex(ValueError, "0"):
+            self.request([{"object_id": "A", "quantity": 1}])
+        self.assertEqual(loans.list_loan_requests(), [])
 
     def test_duplicate_existing_request_rolls_back_new_rows(self):
         self.request([{"object_id": "B"}])
@@ -221,10 +246,14 @@ class MultiArticleLoansTest(unittest.TestCase):
         self.assertEqual({item["status"] for item in loans.list_loan_requests()}, {"stocked"})
 
     def test_group_pickup_is_atomic_when_one_article_lacks_stock(self):
+        with database.connect() as db:
+            db.execute("UPDATE objects SET total_quantity=20, available_quantity=20 WHERE object_id='B'")
         result = self.request([
             {"object_id": "A", "quantity": 2},
             {"object_id": "B", "quantity": 20},
         ])
+        with database.connect() as db:
+            db.execute("UPDATE objects SET available_quantity=10 WHERE object_id='B'")
         group_id = result["request_id"]
         loans.update_loan_request_group_status({"request_group_id": group_id, "status": "approved"})
         loans.update_loan_request_group_status({"request_group_id": group_id, "status": "prepared"})
@@ -238,13 +267,57 @@ class MultiArticleLoansTest(unittest.TestCase):
     def test_group_action_catches_up_one_article_exception(self):
         result = self.request()
         first_id, _ = result["request_ids"]
-        loans.update_loan_request_status({"request_id": first_id, "status": "approved"})
+        with database.connect() as db:
+            db.execute("UPDATE loan_requests SET status='approved' WHERE request_id=?", (first_id,))
         response = loans.update_loan_request_group_status({
             "request_group_id": result["request_id"],
             "status": "approved",
         })
         self.assertEqual(len(response["request_ids"]), 1)
         self.assertEqual({item["status"] for item in loans.list_loan_requests()}, {"approved"})
+
+    def test_individual_pre_checkout_transitions_rejected_for_group(self):
+        result = self.request()
+        for status in ("approved", "prepared", "loaned"):
+            with self.subTest(status=status), self.assertRaisesRegex(ValueError, "hela förfrågan"):
+                loans.update_loan_request_status({"request_id": result["request_ids"][0], "status": status})
+        self.assertEqual({item["status"] for item in loans.list_loan_requests()}, {"requested"})
+        self.assertEqual(loans.list_active_loans(), [])
+        self.assertEqual(self.stock("A"), 10)
+
+    def test_old_mixed_group_catches_up_without_reopening_advanced_rows(self):
+        result = self.request()
+        first_id, _ = result["request_ids"]
+        with database.connect() as db:
+            db.execute("UPDATE loan_requests SET status='prepared' WHERE request_id=?", (first_id,))
+        loans.update_loan_request_group_status({"request_group_id": result["request_id"], "status": "approved"})
+        self.assertEqual(database.row("SELECT status FROM loan_requests WHERE request_id=?", (first_id,))["status"], "prepared")
+        loans.update_loan_request_group_status({"request_group_id": result["request_id"], "status": "prepared"})
+        loans.update_loan_request_group_status({"request_group_id": result["request_id"], "status": "loaned"})
+        self.assertEqual(len(loans.list_active_loans()), 2)
+        self.assertEqual(self.stock("A"), 8)
+
+    def test_remove_unwanted_article_then_advance_group(self):
+        result = self.request()
+        loans.delete_loan_request(result["request_ids"][1])
+        self.activate(result)
+        self.assertEqual(len(loans.list_active_loans()), 1)
+        self.assertEqual(self.stock("A"), 8)
+        self.assertEqual(self.stock("B"), 10)
+
+    def test_job_lists_four_returned_and_eleven_remaining(self):
+        with database.connect() as db:
+            db.execute("UPDATE objects SET total_quantity=15, available_quantity=15 WHERE object_id='A'")
+        result = self.request([{"object_id": "A", "quantity": 15}])
+        self.activate(result)
+        loan = loans.list_active_loans()[0]
+        loans.return_item({"user_id": "user", "items": [{
+            "loan_id": loan["loan_id"], "quantity": 4, "expected_returned_quantity": 0,
+        }]})
+        job = loans.list_loan_requests()[0]
+        self.assertEqual((job["quantity"], job["returned_quantity"], job["remaining_quantity"]), (15, 4, 11))
+        self.assertEqual(job["status"], "loaned")
+        self.assertEqual(self.stock("A"), 4)
 
     def test_group_cannot_skip_a_workflow_step(self):
         result = self.request()

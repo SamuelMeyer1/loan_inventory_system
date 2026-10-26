@@ -6,33 +6,146 @@ const vm = require('node:vm');
 const elements = new Map();
 const get = (id) => {
   if (!elements.has(id)) elements.set(id, {
-    value: '', textContent: '', innerHTML: '', disabled: false,
-    classList: { remove() {} }, focus() {}, querySelectorAll: () => [],
+    value: '', textContent: '', innerHTML: '', disabled: false, dataset: {},
+    classList: { remove() {}, contains: () => false }, focus() {}, querySelectorAll: () => [],
+    handlers: {}, addEventListener(event, handler) { this.handlers[event] = handler; },
+    closest: () => null,
   });
   return elements.get(id);
 };
 const calls = [];
+const messages = [];
 let selected = [];
 const context = vm.createContext({
   state: { language: 'en', loanCart: [], loans: [], objects: [
-    { object_id: 'A', name: 'Same name', is_consumable: 0 },
-    { object_id: 'B', name: 'Same name', is_consumable: 0 },
+    { object_id: 'A', name: 'Same name', is_consumable: 0, available_quantity: 15, total_quantity: 15 },
+    { object_id: 'B', name: 'Same name', is_consumable: 0, available_quantity: 15, total_quantity: 15 },
   ] },
   $: get,
-  document: { querySelectorAll: (selector) => selector === '[data-return-select]:checked' ? selected : [] },
+  document: { querySelectorAll: (selector) => {
+    if (selector === '[data-return-select]:checked') return selected;
+    if (selector === '[data-cart-quantity]' || selector === '[data-cart-remove]') {
+      const attribute = selector.slice(1, -1);
+      return context.state.loanCart.map((entry, index) => {
+        const input = get(`[${attribute}="${index}"]`);
+        input.dataset[attribute === 'data-cart-quantity' ? 'cartQuantity' : 'cartRemove'] = String(index);
+        input.value = String(entry.quantity);
+        return input;
+      });
+    }
+    return [];
+  } },
   escapeHtml: (text) => String(text),
   isConsumableObject: (item) => Boolean(item.is_consumable),
   resolveCheckoutUserId: () => 'user',
-  showToast() {}, t: (key) => key,
+  showToast: (message) => messages.push(message),
+  t: (key, values = {}) => [key, ...Object.values(values)].join(' '),
+  statusText: (value) => value,
   confirm: () => true,
   renderCheckoutUserDetails() {}, resetAutoUserCardScanMemory() {}, setDefaultDates() {},
   refreshAll: async () => {},
-  api: async (url, options) => { calls.push({ url, payload: JSON.parse(options.body) }); return { request_id: 1 }; },
+  api: async (url, options) => {
+    if (url === '/api/objects') return context.state.objects;
+    calls.push({ url, payload: JSON.parse(options.body) }); return { request_id: 1 };
+  },
 });
 vm.runInContext(fs.readFileSync('frontend/js/loan-views.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync('frontend/js/actions.js', 'utf8'), context);
 
 async function main() {
+  const detailsContext = vm.createContext({
+    document: { querySelector: get },
+    localStorage: { getItem: () => null },
+    establishSession: async () => false,
+  });
+  vm.runInContext(fs.readFileSync('frontend/js/app.js', 'utf8'), detailsContext);
+  const firstUser = { user_id: 'first', company: 'Test company', email: 'first@example.invalid' };
+  const nextUser = { user_id: 'next', company: 'Other company' };
+  const disclosure = get('#checkoutUserDisclosure');
+  detailsContext.renderCheckoutUserDetails(firstUser);
+  assert.equal(disclosure.hidden, false);
+  assert.equal(disclosure.open, false, 'User information is collapsed on selection');
+  assert.equal(get('#checkoutUserEmail').value, firstUser.email);
+  disclosure.open = true;
+  detailsContext.renderCheckoutUserDetails(firstUser);
+  assert.equal(disclosure.open, true, 'Refreshing the same user preserves expansion');
+  detailsContext.renderCheckoutUserDetails(nextUser);
+  assert.equal(disclosure.open, false, 'Selecting a different user collapses extra information');
+  assert.equal(get('#checkoutUserCompany').value, nextUser.company);
+  assert.equal(get('#checkoutUserEmail').value, '', 'Missing details do not retain the previous user');
+  disclosure.open = true;
+  detailsContext.renderCheckoutUserDetails();
+  assert.equal(disclosure.hidden, true, 'No disclosure without a selected user');
+  assert.equal(disclosure.open, false);
+  assert.equal(get('#checkoutUserCompany').value, '');
+
+  const choose = (id, quantity) => {
+    get('#checkoutObjectId').value = id;
+    get('#checkoutObjectInstrumentId').value = id;
+    context.updateCheckoutInfo();
+    get('#checkoutQuantity').value = String(quantity);
+  };
+  choose('A', 16);
+  assert.equal((get('#checkoutQuantity').innerHTML.match(/<option/g) || []).length, 15);
+  assert.equal(get('#checkoutObjectQuantity').value, '15 of 15');
+  assert.throws(() => context.addLoanArticle(), /stockExceeded.*15/);
+  assert.equal(context.state.loanCart.length, 0);
+  choose('A', 15);
+  context.addLoanArticle();
+  assert.equal(context.state.loanCart[0].quantity, 15);
+  assert.match(get('#loanCart').innerHTML, /max="15"/);
+  choose('A', 1);
+  assert.equal(get('#checkoutObjectQuantity').value, '0 of 15');
+  assert.equal(get('#checkoutObjectStatus').value, 'Slut');
+  assert.equal(get('#checkoutQuantity').disabled, true);
+  assert.match(get('#checkoutQuantity').innerHTML, /checkout.noneRemaining/);
+  assert.equal(get('#addLoanArticle').disabled, true);
+  assert.throws(() => context.addLoanArticle(), /stockExceeded.*0/);
+  const cartInput = get('[data-cart-quantity="0"]');
+  for (const invalid of [16, 0, -1, 1.5, '']) {
+    cartInput.value = String(invalid);
+    cartInput.handlers.change();
+    assert.equal(context.state.loanCart[0].quantity, 15);
+    assert.equal(cartInput.value, '15');
+  }
+  assert.ok(messages.some((message) => message.includes('stockExceeded')));
+  cartInput.value = '10';
+  cartInput.handlers.change();
+  assert.equal(context.state.loanCart[0].quantity, 10);
+  assert.equal(get('#checkoutObjectQuantity').value, '5 of 15');
+  assert.equal((get('#checkoutQuantity').innerHTML.match(/<option/g) || []).length, 5);
+  get('[data-cart-remove="0"]').handlers.click();
+  assert.equal(get('#checkoutObjectQuantity').value, '15 of 15');
+  assert.equal(context.state.objects[0].available_quantity, 15, 'Cart does not alter persisted stock');
+  choose('A', 8);
+  context.addLoanArticle();
+  choose('A', 8);
+  assert.throws(() => context.addLoanArticle(), /stockExceeded.*7/);
+  assert.equal(context.state.loanCart[0].quantity, 8, 'Merging cannot exceed remaining stock');
+  get('[data-cart-remove="0"]').handlers.click();
+  context.state.objects[0].available_quantity = 0;
+  choose('A', 1);
+  assert.equal(get('#addLoanArticle').disabled, true);
+  assert.throws(() => context.addLoanArticle(), /stockExceeded.*0/);
+  context.state.objects[0].available_quantity = 15;
+  choose('A', 10);
+  context.addLoanArticle();
+  const normalApi = context.api;
+  let stalePost = false;
+  context.api = async (url) => {
+    if (url === '/api/objects') return context.state.objects.map((item) => ({...item, available_quantity: 9}));
+    stalePost = true;
+  };
+  await context.requestLoan();
+  assert.equal(stalePost, false, 'Fresh stock is validated before sending');
+  assert.equal(context.state.loanCart[0].quantity, 10, 'Stale draft remains available for correction');
+  assert.match(get('#loanCart').innerHTML, /max="9"/);
+  assert.match(get('#loanCart').innerHTML, /aria-invalid="true"/);
+  context.api = normalApi;
+  context.state.objects.forEach((item) => { item.available_quantity = 15; });
+  context.state.loanCart = [];
+  context.renderLoanCart();
+
   get('#checkoutObjectId').value = 'Same name';
   get('#checkoutObjectInstrumentId').value = 'B';
   get('#checkoutQuantity').value = '2';
@@ -43,12 +156,61 @@ async function main() {
   context.addLoanArticle();
   assert.equal(context.state.loanCart.length, 2);
   get('#checkoutObjectId').value = 'A';
+  get('#checkoutQuantity').value = '1';
   context.addLoanArticle();
   assert.equal(context.state.loanCart[1].quantity, 2, 'Repeated article merges quantities');
   await context.requestLoan();
   assert.equal(calls[0].payload.items.length, 2);
   assert.equal(calls[0].payload.user_id, 'user');
   assert.equal(context.state.loanCart.length, 0);
+  const savedObjects = context.state.objects;
+  context.state.objects = [
+    { object_id: 'OBJ-1001', name: 'Torque wrench', available_quantity: 4, total_quantity: 4 },
+    { object_id: 'OBJ-1005', name: 'USB cable', available_quantity: 8, total_quantity: 8 },
+  ];
+  context.state.loanCart = [
+    { object_id: 'OBJ-1005', name: 'USB cable', quantity: 1 },
+    { object_id: 'OBJ-1001', name: 'Torque wrench', quantity: 3 },
+  ];
+  choose('OBJ-1001', 1);
+  context.renderLoanCart();
+  const fullCartInput = get('[data-cart-quantity="1"]');
+  fullCartInput.value = '4';
+  fullCartInput.handlers.change();
+  assert.equal(get('#checkoutQuantity').disabled, true);
+  const beforeFullCart = calls.length;
+  await context.requestLoan();
+  assert.equal(calls.length, beforeFullCart + 1, 'A full 4-of-4 cart must submit even with the same article selected');
+  assert.deepEqual(calls.at(-1).payload.items, [
+    { object_id: 'OBJ-1005', quantity: 1 }, { object_id: 'OBJ-1001', quantity: 4 },
+  ]);
+  context.state.loanCart = [{ object_id: 'OBJ-1001', name: 'Torque wrench', quantity: 3 }];
+  choose('OBJ-1001', 1);
+  await context.requestLoan();
+  assert.deepEqual(calls.at(-1).payload.items, [{ object_id: 'OBJ-1001', quantity: 3 }],
+    'Sending preserves explicit cart quantity; adding more requires Add article');
+  choose('OBJ-1001', 4);
+  await context.requestLoan();
+  assert.deepEqual(calls.at(-1).payload.items, [{ object_id: 'OBJ-1001', quantity: 4 }],
+    'Single selected article still submits without manually adding it');
+  context.state.loanCart = [{ object_id: 'OBJ-1005', name: 'USB cable', quantity: 1 }];
+  choose('OBJ-1001', 2);
+  await context.requestLoan();
+  assert.deepEqual(calls.at(-1).payload.items, [
+    { object_id: 'OBJ-1005', quantity: 1 }, { object_id: 'OBJ-1001', quantity: 2 },
+  ], 'An unsaved different selection is still included');
+  context.state.loanCart = [{ object_id: 'OBJ-1001', name: 'Torque wrench', quantity: 4 }];
+  choose('OBJ-1001', 1);
+  const beforeStockChange = calls.length;
+  context.api = async (url) => url === '/api/objects'
+    ? context.state.objects.map((item) => ({ ...item, available_quantity: 3 }))
+    : calls.push({ url });
+  await context.requestLoan();
+  assert.equal(calls.length, beforeStockChange, 'A full selected cart still validates newly reduced stock');
+  assert.equal(context.state.loanCart[0].quantity, 4);
+  context.api = normalApi;
+  context.state.loanCart = [];
+  context.state.objects = savedObjects;
   const grouped = context.groupLoanRequestRows([
     { request_id: 11, request_group_id: 10, status: 'approved' },
     { request_id: 10, request_group_id: 10, status: 'requested' },
@@ -64,6 +226,7 @@ async function main() {
   assert.equal(context.state.loanCart.length, 1, 'Failed request preserves cart');
   assert.equal(get('#requestLoanButton').disabled, false);
   context.api = async (url, options) => {
+    if (url === '/api/objects') return context.state.objects;
     const payload = JSON.parse(options.body);
     calls.push({ url, payload });
     return { items: payload.items || [], returned_quantity: 1, damaged_quantity: 0, remaining_quantity: 3 };
@@ -96,6 +259,32 @@ async function main() {
   await context.returnSelectedLoans();
   assert.equal(calls.at(-1).payload.items[0].damaged_quantity, 1);
   assert.equal(calls.at(-1).payload.items[0].damage_description, 'Cracked casing');
+  for (const prefix of ['return', 'job-return']) {
+    const damaged = get(`[data-${prefix}-damaged="3"]`);
+    const description = get(`[data-${prefix}-description="3"]`);
+    const label = { hidden: false };
+    description.closest = () => prefix === 'job-return' ? label : null;
+    damaged.value = '1';
+    context.syncReturnDamageDescription(prefix, 3);
+    assert.equal(description.hidden, false);
+    assert.equal(description.required, true);
+    description.value = 'Old damage draft';
+    damaged.value = '0';
+    context.syncReturnDamageDescription(prefix, 3);
+    assert.equal(description.hidden, true);
+    assert.equal(description.required, false);
+    assert.equal(description.value, '', 'Clearing damaged quantity removes the obsolete description');
+    if (prefix === 'job-return') assert.equal(label.hidden, true);
+    damaged.value = '2';
+    context.syncReturnDamageDescription(prefix, 3);
+    assert.equal(description.hidden, false);
+    assert.equal(description.value, '');
+    damaged.value = '0';
+    context.syncReturnDamageDescription(prefix, 3);
+  }
+  await context.returnSelectedLoans();
+  assert.equal(calls.at(-1).payload.items[0].damaged_quantity, 0);
+  assert.equal(calls.at(-1).payload.items[0].damage_description, '');
   context.state.returnBusy = true;
   const beforeBusy = calls.length;
   await context.returnSelectedLoans();

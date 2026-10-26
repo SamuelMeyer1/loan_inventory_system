@@ -33,7 +33,7 @@
           <p class="privacy-contact-inline">Frågor? Kontakta Olof Samuelsson: <a href="mailto:olof.samuelsson@volvo.com">olof.samuelsson@volvo.com</a></p>
           <a href="/privacy.html">Läs mer om dataskydd / Privacy information</a>
         </details>
-        <span class="login-version">Version 1.13.2</span>
+        <span class="login-version">Version 1.18.3</span>
       </div>
     </section>
     <div class="app-shell" hidden>
@@ -63,6 +63,7 @@
         <header class="topbar">
           <div class="topbar-actions">
             <span id="simulationBadge" class="simulation-badge" hidden>Simulering — endast testdata, inga externa utskick</span>
+            <div class="topbar-controls">
             <button class="search-open-button" id="openSearchButton" type="button">Sök</button>
             <div class="language-toggle" aria-label="Språk">
               <span class="language-label">Språk</span>
@@ -76,6 +77,23 @@
               </button>
             </div>
             <div class="account-access" aria-label="Inloggningsstatus">
+              <details id="adminNotifications" class="admin-notifications" hidden>
+                <summary id="adminNotificationsSummary" aria-label="Adminnotiser">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/>
+                    <path d="M9 20a3 3 0 0 0 6 0"/>
+                  </svg>
+                  <span id="adminNotificationCount">0</span>
+                </summary>
+                <section class="admin-notification-panel">
+                  <h2 id="adminNotificationsTitle">Adminnotiser</h2>
+                  <p id="adminNotificationsHelp">Senaste 20 händelserna. När panelen öppnas läsmarkeras notiserna för både Admin och Systemadmin. Jobbens status ändras inte.</p>
+                  <p id="adminNotificationError" role="status" hidden></p>
+                  <ul id="adminNotificationList"></ul>
+                  <button id="markAdminNotificationsRead" class="secondary-button" type="button">Markera alla som lästa</button>
+                  <button id="adminNotificationJobs" class="link-button" type="button">Gå till jobblistan</button>
+                </section>
+              </details>
               <strong id="accountRole" class="account-role">Operatör</strong>
               <button id="logoutButton" class="secondary-button" type="button" hidden>Logga ut</button>
               <button id="adminLoginButton" class="secondary-button" type="button" hidden>Logga in</button>
@@ -85,6 +103,7 @@
               <option value="admin">Admin</option>
               <option value="superadmin">System admin</option>
             </select>
+            </div>
           </div>
         </header>
 
@@ -181,32 +200,38 @@
               </label>
               <button class="secondary-button user-scan-button" id="openUserScanButton" type="button">Scanna användare</button>
             </div>
-            <div class="selected-user-details" id="checkoutUserDetails">
-              <label>
-                Företag
-                <input id="checkoutUserCompany" readonly>
-              </label>
-              <label>
-                Grupp
-                <input id="checkoutUserGroup" readonly>
-              </label>
-              <label>
-                Avdelning
-                <input id="checkoutUserDepartment" readonly>
-              </label>
-              <label>
-                E-post
-                <input id="checkoutUserEmail" readonly>
-              </label>
-              <label>
-                Telefon
-                <input id="checkoutUserPhone" readonly>
-              </label>
-              <label>
-                Alias
-                <input id="checkoutUserAlias" readonly>
-              </label>
-            </div>
+            <details class="checkout-user-disclosure" id="checkoutUserDisclosure" hidden>
+              <summary>
+                <span id="checkoutUserShowMore">Visa mer</span>
+                <span id="checkoutUserShowLess">Visa mindre</span>
+              </summary>
+              <div class="selected-user-details" id="checkoutUserDetails">
+                <label>
+                  Företag
+                  <input id="checkoutUserCompany" readonly>
+                </label>
+                <label>
+                  Grupp
+                  <input id="checkoutUserGroup" readonly>
+                </label>
+                <label>
+                  Avdelning
+                  <input id="checkoutUserDepartment" readonly>
+                </label>
+                <label>
+                  E-post
+                  <input id="checkoutUserEmail" readonly>
+                </label>
+                <label>
+                  Telefon
+                  <input id="checkoutUserPhone" readonly>
+                </label>
+                <label>
+                  Alias
+                  <input id="checkoutUserAlias" readonly>
+                </label>
+              </div>
+            </details>
             <div class="checkout-object-search-row">
               <label class="suggestion-field">
                 Sök objekt
@@ -220,6 +245,21 @@
                 Namn
                 <input id="checkoutObjectName" readonly>
               </label>
+              <label>
+                Kvar att välja
+                <input id="checkoutObjectQuantity" readonly>
+              </label>
+              <label>
+                Status
+                <input id="checkoutObjectStatus" readonly>
+              </label>
+            </div>
+            <details class="checkout-user-disclosure" id="checkoutObjectDisclosure" hidden>
+              <summary>
+                <span id="checkoutObjectShowMore">Visa mer</span>
+                <span id="checkoutObjectShowLess">Visa mindre</span>
+              </summary>
+              <div class="selected-object-details">
               <label>
                 Instrument ID
                 <input id="checkoutObjectInstrumentId" readonly>
@@ -244,15 +284,8 @@
                 Hiss
                 <input id="checkoutObjectLift" readonly>
               </label>
-              <label>
-                Antal i lager
-                <input id="checkoutObjectQuantity" readonly>
-              </label>
-              <label>
-                Status
-                <input id="checkoutObjectStatus" readonly>
-              </label>
-            </div>
+              </div>
+            </details>
             <div class="checkout-loan-details">
               <label>
                 Engine ID
@@ -596,19 +629,13 @@
                       <option value="">Ingen grupp</option>
                     </select>
                   </label>
-                  <label>
-                    Roll
-                    <select id="newUserRole">
-                      <option value="operator">Operatör</option>
-                      <option value="admin">Admin</option>
-                      <option value="superadmin">System admin</option>
-                    </select>
-                  </label>
-                  <label class="checkbox-row">
+                  <label class="checkbox-row" id="newUserActiveControl" hidden>
                     <input id="newUserActive" type="checkbox" checked>
-                    Aktiv användare
+                    <span id="newUserActiveLabel">Tillåt utlåning till personen</span>
                   </label>
                 </div>
+                <p id="borrowerProfileHelp">Detta är en låntagarprofil, inte ett inloggningskonto. Inaktivitetsvarningen styrs under System → Allmänt och spärrar inte personen.</p>
+                <p id="newUserActiveHelp" hidden>Manuell avstängning av utlåning. Detta är inte ett mått på när personen senast lånade.</p>
                 <section class="profile-data-acknowledgement" id="newUserPrivacyAcknowledgement">
                   <label class="profile-data-acknowledgement-check">
                     <input id="newUserPrivacyAcknowledged" type="checkbox" required>
@@ -629,7 +656,7 @@
               <div class="table-wrap compact-table-wrap admin-list-table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Status</th><th>Namn</th><th>Alias</th><th>Kortkod</th><th>E-post</th><th>Telefon</th><th>Företag</th><th>Avdelning</th><th>Roll</th><th></th></tr>
+                    <tr><th>Status</th><th>Namn</th><th>Alias</th><th>Kortkod</th><th>E-post</th><th>Telefon</th><th>Företag</th><th>Avdelning</th><th></th></tr>
                   </thead>
                   <tbody id="usersBody"></tbody>
                 </table>
@@ -1126,7 +1153,7 @@
               <div class="section-title-row">
                 <div>
                   <h2>Allmänt</h2>
-                  <p class="system-settings-description">Övergripande status och plats för fler systeminställningar senare.</p>
+                  <p id="adminRulesDescription" class="system-settings-description">Regler för inaktivitetsvarning och interna Adminnotiser. Endast Systemadmin kan ändra dem.</p>
                 </div>
               </div>
               <div class="settings-summary-grid">
@@ -1155,6 +1182,30 @@
                   <strong id="borrowBlockSummary">Av</strong>
                 </div>
               </div>
+              <fieldset class="admin-rule-fields">
+                <legend id="inactivitySettingsTitle">Inaktivitetsvarning</legend>
+                <label class="admin-rule-check">
+                  <input id="inactiveUserWarningEnabled" type="checkbox">
+                  <span id="inactiveUserWarningLabel">Visa Inaktiv vid låntagarens namn</span>
+                </label>
+                <label>
+                  <span id="inactiveUserDaysLabel">Dagar utan utlåning</span>
+                  <input id="inactiveUserDays" type="number" min="1" max="36500" step="1" value="365" required>
+                </label>
+                <p id="inactiveUserHelp">Standard: 365 dagar sedan senaste utlåningen, eller registreringen om personen aldrig lånat. Ingen automatisk spärr eller radering. Kvarvarande lån, öppna jobb och olösta skador undantas.</p>
+              </fieldset>
+              <fieldset class="admin-rule-fields">
+                <legend id="adminNotificationSettingsTitle">Notiser i Admin-klockan</legend>
+                <label class="admin-rule-check">
+                  <input id="notifyAdminNewRequest" type="checkbox">
+                  <span id="notifyAdminNewRequestLabel">Ny låneförfrågan</span>
+                </label>
+                <label class="admin-rule-check">
+                  <input id="notifyAdminLoaned" type="checkbox">
+                  <span id="notifyAdminLoanedLabel">Artiklar har lämnats ut</span>
+                </label>
+                <p id="adminNotificationSettingsHelp">Standard: nya låneförfrågningar. Gäller Admin och Systemadmin. Klockan uppdateras var 15:e sekund medan sidan är synlig. Lästa notiser sparas per konto. E-post och Teams ställs in separat.</p>
+              </fieldset>
             </section>
 
             <div class="system-settings-actions">
@@ -1168,6 +1219,19 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <section class="print-receipt" id="printReceipt" aria-hidden="true"></section>
+    <dialog id="jobReturnDialog" class="job-return-dialog" aria-labelledby="jobReturnTitle" aria-describedby="jobReturnHelp">
+      <form id="jobReturnForm">
+        <h2 id="jobReturnTitle">Återlämna artiklar</h2>
+        <p id="jobReturnHelp">Ange antal som lämnas tillbaka nu. Lämna 0 för artiklar som är kvar hos låntagaren.</p>
+        <p id="jobReturnError" role="alert" hidden></p>
+        <div id="jobReturnItems"></div>
+        <div class="form-actions">
+          <button id="cancelJobReturn" class="secondary-button" type="button">Avbryt</button>
+          <button id="saveJobReturn" class="primary-button" type="submit">Bekräfta återlämning</button>
+        </div>
+      </form>
+    </dialog>
+
     <div class="modal-layer" id="jobDetailModal" aria-hidden="true">
       <div class="modal-backdrop" id="jobDetailBackdrop"></div>
       <section class="modal-panel job-detail-panel" role="dialog" aria-modal="true" aria-labelledby="jobDetailTitle">

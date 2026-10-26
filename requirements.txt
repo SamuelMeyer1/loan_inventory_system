@@ -3,3 +3,6 @@ openpyxl
 
 # Smartcard/RFID reader support.
 pyscard
+
+# Native OS certificate verification for update checks.
+truststore==0.10.5

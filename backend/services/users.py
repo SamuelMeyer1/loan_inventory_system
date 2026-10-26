@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.database import connect, row, rows
 from backend.services.common import log_event, now_text, optional_text
+from backend.services.notifications import get_system_settings
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -24,7 +25,16 @@ def list_users(include_inactive: bool = False) -> list[dict[str, Any]]:
                    WHERE l.user_id = u.user_id
                      AND l.status = 'active'
                      AND l.due_time < datetime('now', 'localtime')
-               ) AS overdue_loan_count
+               ) AS overdue_loan_count,
+               CAST(julianday('now', 'localtime') -
+                    julianday(COALESCE(u.last_borrowed_at, u.created_at)) AS INTEGER) AS inactive_for_days,
+               (
+                   EXISTS (SELECT 1 FROM loans l WHERE l.user_id = u.user_id AND l.status != 'returned')
+                   OR EXISTS (SELECT 1 FROM loan_requests r WHERE r.user_id = u.user_id
+                              AND r.status NOT IN ('returned', 'stocked'))
+                   OR EXISTS (SELECT 1 FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
+                              WHERE l.user_id = u.user_id AND r.damage_status = 'quarantined')
+               ) AS has_pending_activity
         FROM users u
         {where}
         ORDER BY u.active DESC, u.name
@@ -37,11 +47,20 @@ def list_users(include_inactive: bool = False) -> list[dict[str, Any]]:
         block_limit = max(1, int((setting or {}).get("value") or "3"))
     except ValueError:
         block_limit = 3
+    settings = get_system_settings()
+    inactivity_days = int(settings["inactive_user_days"])
     for user in users:
         overdue_count = int(user.get("overdue_loan_count") or 0)
         override_enabled = int(user.get("borrow_override") or 0) == 1
         user["borrow_blocked"] = int(block_enabled and overdue_count >= block_limit and not override_enabled)
         user["borrow_block_limit"] = block_limit
+        user["inactivity_warning"] = int(
+            settings["inactive_user_warning_enabled"] == "1"
+            and user["inactive_for_days"] is not None
+            and user["inactive_for_days"] >= inactivity_days
+            and not user["has_pending_activity"]
+        )
+        user["inactivity_threshold_days"] = inactivity_days
     return users
 
 
@@ -285,8 +304,8 @@ def update_user(payload: dict[str, Any]) -> dict[str, Any]:
     rfid_code = optional_text(payload, "rfid_code")
     department = optional_text(payload, "department")
     department_name = optional_text(payload, "department_name")
-    role = optional_text(payload, "role") or "operator"
-    active = 1 if payload.get("active", True) else 0
+    role = optional_text(payload, "role") or existing["role"]
+    active = 1 if payload.get("active", existing["active"]) else 0
 
     validate_user_fields(first_name, last_name, email, phone, company, role)
     department = resolve_group_department(department_name, department)

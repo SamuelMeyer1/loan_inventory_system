@@ -67,8 +67,14 @@ async function requestLoan() {
       showToast(t("toast.chooseUser"));
       return;
     }
-    if ($("#checkoutObjectId").value.trim()) addLoanArticle();
+    state.objects = await api("/api/objects");
+    const selectedObject = selectedCheckoutObject();
+    const selectedInCart = selectedObject && state.loanCart.some((entry) => entry.object_id === selectedObject.object_id);
+    if ($("#checkoutObjectId").value.trim() && !selectedInCart) addLoanArticle();
     if (!state.loanCart.length) throw new Error(state.language === "en" ? "Add at least one article." : "Lägg till minst en artikel.");
+    state.loanCart.forEach((entry) =>
+      validateLoanArticle(state.objects.find((item) => item.object_id === entry.object_id), entry.quantity)
+    );
     const data = await api("/api/loan-requests", {
       method: "POST",
       body: JSON.stringify({ ...checkoutPayload(userId), items: state.loanCart.map(({ object_id, quantity }) => ({ object_id, quantity })) }),
@@ -81,6 +87,7 @@ async function requestLoan() {
   } finally {
     if (button) button.textContent = originalText || t("action.requestLoan");
     if (button) button.disabled = false;
+    renderLoanCart();
   }
 }
 
@@ -129,20 +136,8 @@ async function closeConsumableReport(reportId) {
   }
 }
 
-async function updateJobStatus(requestId, status) {
-  try {
-    const data = await api("/api/loan-requests", {
-      method: "PUT",
-      body: JSON.stringify({ request_id: requestId, status }),
-    });
-    showToast(t("toast.jobUpdated", { id: data.request_id }));
-    await refreshAll();
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
 async function updateJobGroupStatus(requestGroupId, status) {
+  if (status === "returned") return openJobReturn(requestGroupId);
   try {
     const data = await api("/api/loan-requests", {
       method: "PUT",
@@ -238,13 +233,14 @@ async function saveUser(event) {
       alias: $("#newUserAlias").value,
       department: $("#newUserDepartment").value,
       department_name: $("#newUserDepartmentName").value,
-      role: $("#newUserRole").value,
-      active: $("#newUserActive").checked,
     };
     if (!state.editingUserId) {
       payload.privacy_notice_acknowledged = $("#newUserPrivacyAcknowledged").checked;
     }
-    if (state.editingUserId) payload.user_id = state.editingUserId;
+    if (state.editingUserId) {
+      payload.user_id = state.editingUserId;
+      payload.active = $("#newUserActive").checked;
+    }
 
     const data = await api("/api/users", {
       method: state.editingUserId ? "PUT" : "POST",
@@ -271,8 +267,9 @@ function startEditUser(userId) {
 	  $("#newUserDepartment").value = user.department || "";
 	  $("#newUserDepartmentName").value = user.department_name || "";
   syncDepartmentFromGroup("#newUserDepartmentName", "#newUserDepartment");
-  $("#newUserRole").value = user.role || "operator";
   $("#newUserActive").checked = user.active !== 0;
+  $("#newUserActiveControl").hidden = false;
+  $("#newUserActiveHelp").hidden = false;
   $("#newUserPrivacyAcknowledgement").hidden = true;
   $("#newUserPrivacyAcknowledged").required = false;
   $("#saveUserButton").textContent = "Spara ändringar";
@@ -286,6 +283,8 @@ function resetUserForm() {
   $("#addUserForm").reset();
   $("#newUserDepartment").readOnly = false;
   $("#newUserActive").checked = true;
+  $("#newUserActiveControl").hidden = true;
+  $("#newUserActiveHelp").hidden = true;
   $("#newUserPrivacyAcknowledgement").hidden = false;
   $("#newUserPrivacyAcknowledged").required = true;
   $("#saveUserButton").textContent = "Skapa användare";
@@ -364,6 +363,10 @@ async function deleteGroup(groupId) {
 
 async function saveSystemSettings(event) {
   event?.preventDefault();
+  if (event?.type === "submit" && document.querySelector('[data-system-panel="general"].active')) {
+    await saveAdminRules();
+    return;
+  }
   try {
     state.systemSettings = await api("/api/system-settings", {
       method: "PUT",
@@ -414,6 +417,72 @@ async function saveSystemSettings(event) {
     await refreshAll();
   } catch (error) {
     showToast(error.message);
+  }
+}
+
+async function saveAdminRules() {
+  try {
+    state.systemSettings = await api("/api/system-settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        inactive_user_warning_enabled: isChecked("#inactiveUserWarningEnabled"),
+        inactive_user_days: fieldValue("#inactiveUserDays"),
+        notify_admin_new_request: isChecked("#notifyAdminNewRequest"),
+        notify_admin_loaned: isChecked("#notifyAdminLoaned"),
+      }),
+    });
+    showToast(t("settings.rulesSaved"));
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function refreshAdminNotifications() {
+  if (state.role === "operator") return;
+  const request = ++state.adminNotificationRequest;
+  state.adminNotificationBusy = true;
+  try {
+    const data = await api("/api/admin-notifications");
+    if (request !== state.adminNotificationRequest) return;
+    state.adminNotifications = data;
+    state.adminNotificationError = "";
+    return data;
+  } catch (error) {
+    if (request !== state.adminNotificationRequest) return;
+    state.adminNotificationError = error.message;
+  } finally {
+    if (request === state.adminNotificationRequest) {
+      state.adminNotificationBusy = false;
+      renderAdminNotifications();
+    }
+  }
+}
+
+async function readOpenedAdminNotifications() {
+  const panel = $("#adminNotifications");
+  if (!panel.open || panel.hidden || state.role === "operator") return;
+  const data = await refreshAdminNotifications();
+  if (data?.unread_count && panel.open && !panel.hidden && state.role !== "operator") {
+    await markAdminNotificationsRead(data.latest_event_id);
+  }
+}
+
+async function markAdminNotificationsRead(upToEventId = state.adminNotifications.latest_event_id) {
+  const button = $("#markAdminNotificationsRead");
+  if (button.disabled || state.adminNotificationReadBusy || state.role === "operator") return;
+  state.adminNotificationReadBusy = true;
+  button.disabled = true;
+  try {
+    await api("/api/admin-notifications/read", {
+      method: "POST", body: JSON.stringify({ up_to_event_id: upToEventId }),
+    });
+    await refreshAdminNotifications();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.adminNotificationReadBusy = false;
+    renderAdminNotifications();
   }
 }
 
@@ -826,6 +895,74 @@ async function deleteObject(objectId) {
   }
 }
 
+function returnLoanItem(loan, quantity, damaged, description) {
+  const remaining = loan.remaining_quantity ?? loan.quantity;
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > remaining ||
+      !Number.isInteger(damaged) || damaged < 0 || damaged > quantity ||
+      (damaged > 0 && !description) || (damaged === 0 && description) || description.length > 2000) {
+    throw new Error(t("return.invalid"));
+  }
+  return { loan_id: loan.loan_id, quantity, damaged_quantity: damaged, damage_description: description,
+    expected_returned_quantity: loan.returned_quantity || 0 };
+}
+
+async function openJobReturn(requestGroupId, requestId = null) {
+  if (state.returnBusy || state.jobReturnLoading || $("#jobReturnDialog").open) return;
+  state.jobReturnLoading = true;
+  try {
+    const loans = await api("/api/loans");
+    const selected = loans.filter((loan) => Number(loan.request_group_id) === requestGroupId &&
+      (requestId === null || Number(loan.loan_request_id) === requestId));
+    if (!selected.length) throw new Error(t("return.noLoans"));
+    if (selected.some((loan) => loan.user_id !== selected[0].user_id)) throw new Error(t("return.invalid"));
+    state.jobReturnLoans = selected;
+    renderJobReturn();
+    $("#jobReturnDialog").showModal();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.jobReturnLoading = false;
+  }
+}
+
+async function saveJobReturn(event) {
+  event.preventDefault();
+  if (state.returnBusy) return;
+  $("#jobReturnError").hidden = true;
+  $("#jobReturnError").textContent = "";
+  try {
+    const items = state.jobReturnLoans.flatMap((loan) => {
+      const input = $(`[data-job-return-quantity="${loan.loan_id}"]`);
+      if (!input.value.trim()) throw new Error(t("return.invalid"));
+      const quantity = Number(input.value);
+      const damaged = Number($(`[data-job-return-damaged="${loan.loan_id}"]`).value);
+      const description = $(`[data-job-return-description="${loan.loan_id}"]`).value.trim();
+      if (quantity === 0 && damaged === 0 && !description) return [];
+      return [returnLoanItem(loan, quantity, damaged, description)];
+    });
+    if (!items.length) throw new Error(t("jobs.returnChooseQuantity"));
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    const damaged = items.reduce((sum, item) => sum + item.damaged_quantity, 0);
+    if (!confirm(t("return.confirm", { quantity, damaged }))) return;
+    state.returnBusy = true;
+    setJobReturnBusy(true);
+    const userId = state.jobReturnLoans[0].user_id;
+    const data = await api("/api/return", { method: "POST", body: JSON.stringify({ user_id: userId, items }) });
+    state.returnSummary = { ...data, user_id: userId };
+    $("#jobReturnDialog").close();
+    showToast(t("jobs.returnSaved", { quantity, damaged }));
+    await refreshAll();
+  } catch (error) {
+    $("#jobReturnError").textContent = error.message;
+    $("#jobReturnError").hidden = false;
+    showToast(error.message);
+  } finally {
+    state.returnBusy = false;
+    setJobReturnBusy(false);
+    updateReturnButtons();
+  }
+}
+
 async function returnSelectedLoans(all = false) {
   if (state.returnBusy) return;
   const userId = $("#returnUser").value;
@@ -840,13 +977,7 @@ async function returnSelectedLoans(all = false) {
       const quantity = all ? remaining : Number($(`[data-return-quantity="${loanId}"]`).value);
       const damaged = Number($(`[data-return-damaged="${loanId}"]`).value);
       const description = $(`[data-return-description="${loanId}"]`).value.trim();
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > remaining ||
-          !Number.isInteger(damaged) || damaged < 0 || damaged > quantity ||
-          (damaged > 0 && !description) || (damaged === 0 && description) || description.length > 2000) {
-        throw new Error(t("return.invalid"));
-      }
-      return { loan_id: loanId, quantity, damaged_quantity: damaged, damage_description: description,
-        expected_returned_quantity: loan.returned_quantity || 0 };
+      return returnLoanItem(loan, quantity, damaged, description);
     });
     const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
     const damaged = items.reduce((sum, item) => sum + item.damaged_quantity, 0);

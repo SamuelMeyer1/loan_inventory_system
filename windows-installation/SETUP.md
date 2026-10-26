@@ -1,8 +1,8 @@
-# Windows Setup – V1.13.2
+# Windows Setup – V1.18.3
 
 ## Installera och starta
 
-Kör `LoanInventory-1.13.2-Setup.exe` på Windows 10/11 x64. Python, Tkinter,
+Kör `LoanInventory-1.18.3-Setup.exe` på Windows 10/11 x64. Python, Tkinter,
 SQLite, openpyxl och pyscard följer med. Ingen separat Python-installation
 eller administratörsbehörighet behövs. Kortläsare kan fortfarande behöva
 tillverkarens drivrutin; hårdvara ingår inte i verifieringen.
@@ -11,12 +11,20 @@ Programmet installeras normalt i `%LOCALAPPDATA%\Programs\LoanInventory`.
 Startmenyn får en genväg; skrivbordsgenväg är ett val i installationen.
 Starta **Loan Inventory**, välj **Simulering** och tryck **Starta** för
 fiktiva data och `admin/admin` eller `superadmin/superadmin`.
+Simuleringen sparas i `%LOCALAPPDATA%\LoanInventoryLauncher\simulations\demo.db`.
+Den innehåller 5 grupper, 15 låntagare, 20 pågående jobb och varierad historik.
+Teständringar finns kvar vid omstart. Stoppa servern och välj
+**Återställ demodata...** för en ny demo vid nästa start; den gamla arkiveras.
+Vald riktig databas berörs inte, och gamla tillfälliga simuleringar importeras inte.
 Ingen riktig databas eller något befintligt konto följer med installeraren.
 Installeraren är osignerad: Windows/SmartScreen kan varna. Följ organisationens
 regler; kringgå inte blockerad programinstallation.
 
-V1.13.2 har en egen blå lagerikon med enbart boxen i startfönstret, programmet,
-Setup och genvägarna. Installera den nya versionen för att ersätta Python-ikonen.
+Programmet har en egen blå lagerikon med enbart boxen i startfönstret,
+programmet och Setup. Från V1.13.3 använder genvägarna en separat versionsmärkt
+ICO-fil, så de inte återanvänder den gamla EXE-ikonreferensen i Windows.
+Välj **Skapa en genväg på skrivbordet** när du uppdaterar till samma programmapp.
+Installationen uppdaterar sin genväg, men inte manuellt skapade kopior.
 Serverporten reserveras före databasstart men börjar lyssna först när starten
 är klar. Startfönstret väntar upp till 60 sekunder och varje hälsokontroll får
 5 sekunder. En avbruten svarsskrivning loggas kort utan nytt 500-svar.
@@ -24,6 +32,30 @@ En låneändring kan redan ha sparats när anslutningen bryts; kontrollera lista
 innan du försöker samma åtgärd igen.
 
 ## Egen databas och konton
+
+### Regler utan kodändring
+
+Logga in som **Systemadmin** och öppna **System → Allmänt**. Där sparas
+inaktivitetsvarning (på/av), antal dagar (1–36500, standard 365) och
+Admin-klockans notistyper (ny förfrågan som standard, faktisk utlåning som tillval).
+Inställningarna sparas i vald databas och bevaras vid uppdatering.
+Den här sidan behöver inte SMTP-/Teams-inställningar eller testmottagare.
+
+Inaktivitet märks vid namnet i användarlistan. Det är en manuell granskningssignal,
+inte en automatisk spärr eller radering. Utgångspunkten är senaste utlåning,
+annars registreringsdatum. Saknas datum görs ingen automatisk bedömning.
+Kvarvarande lån, öppna jobb och olösta skador undantas. Senaste utlåningsdatum
+bevaras i låntagarprofilen även när avslutad lånehistorik gallras.
+
+Admin och Systemadmin ser klockan bredvid inloggningsstatus. Den visar de senaste
+20 händelserna av valda typer, utan personuppgifter, och kontrollerar nya händelser
+var 15:e sekund när sidan är synlig. En utlämning kan ge en notis per artikelrad.
+Läsmarkering sparas separat per konto och notistyp. Knappen markerar visade och
+äldre händelser av aktiverade typer; senare inkomna händelser förblir olästa.
+Loggarnas vanliga gallringsregler gäller även denna historik.
+Notiserna skickar aldrig e-post, Teams eller SMS.
+
+### Databas och inloggning
 
 **Ny databas...** föreslår `%LOCALAPPDATA%\LoanInventoryLauncher\data`.
 Välj **Lokalt** och den filen. Databaser som väljs via **Bläddra...** används
@@ -44,12 +76,28 @@ företags-/GDPR-lösning; se `dataskydd.md` bredvid detta dokument i installerad
 
 ## Uppdatera och avinstallera
 
-**Öppna versionssidan i webbläsaren** öppnar enbart
-<https://github.com/SamuelMeyer1/loan_inventory_system/releases>.
-Om repo är privat: logga in i webbläsaren med ett GitHub-konto som har åtkomst.
-Knappen kontrollerar inte om en ny version finns och laddar inte ned eller
-installerar något. Ingen GitHub-token finns i appen. Om ingen release har
-publicerats finns ännu inget att hämta där.
+Startfönstret kontrollerar en gång vid varje start senaste stabila GitHub-release
+i <https://github.com/SamuelMeyer1/loan-inventory-releases/releases>.
+Kontrollen är asynkron, använder 10 sekunders nätverkstimeout och kräver ingen
+GitHub-inloggning/token. Windows/systemets proxyinställningar används.
+Från 1.18.2 verifieras HTTPS med Windows certifikatfunktioner via `truststore`
+för just uppdateringsanropet. Det stöder systemets betrodda certifikat och
+hämtning av saknade mellanliggande certifikat utan att stänga av verifiering.
+Värdnamn och certifikatkedja kontrolleras fortfarande; appen installerar inga
+rotcertifikat och ändrar inte SMTP eller andra anslutningar.
+Om certifikatfel kvarstår: kontrollera datorns datum och godkända certifikat
+med IT. Gå inte förbi säkerhetsvarningar. 1.18.0/1.18.1 med certifikatfel
+behöver uppdateras manuellt via webbläsaren till 1.18.2 för att få denna rättning.
+Ingen publicerad release, nätverksfel och API-begränsning visas i startfönstret;
+servern kan startas ändå. **Sök uppdateringar** provar igen.
+
+Versionsnummer jämförs numeriskt, inte alfabetiskt. Bara en uppladdad
+`LoanInventory-<version>-Setup.exe` från rätt release erbjuds; aldrig TestSetup,
+källkodsarkiv, utkast eller förhandsversioner. Efter godkännande öppnar
+standardwebbläsaren filens nedladdningsadress. Appen kontrollerar metadata,
+filnamn och adress, men verifierar inte den nedladdade filens hash eller signatur.
+Ingen installationsfil körs automatiskt. **Versionssida** öppnar release-listan.
+BAT-startens källkod ersätts inte av Setup; den installerade EXE-appen uppdateras.
 
 1. Säkerhetskopiera enligt godkänd rutin. Ladda ned en ny Setup manuellt när
    en behörig projektägare har publicerat den.
@@ -58,6 +106,23 @@ publicerats finns ännu inget att hämta där.
    De tvångsavslutar inte servern.
 3. Kör Setup som samma Windows-användare, till samma programmapp.
 4. Starta appen. Inställningar, databaser och loggar ligger kvar.
+
+### Publicera en ny version
+
+1. Bygg och testa produktionspaketet. Skapa en release i
+   <https://github.com/SamuelMeyer1/loan-inventory-releases/releases/new>.
+2. Använd taggen `v1.18.3` och titeln `Loan Inventory 1.18.3` för denna version.
+   Tagg, versionsnummer i appen och filnamn måste stämma överens.
+3. Beskriv ändringarna och bifoga endast `LoanInventory-1.18.3-Setup.exe`
+   från `dist\installer`. Lägg inte med TestSetup, databaser, backuper,
+   inställningar eller projektmappen. Granska paketets innehåll före publicering.
+4. Publicera som stabil release och markera den som senaste release.
+   Senare versioner följer samma mönster med nya versionsnummer.
+
+Äldre installationer utan automatisk kontroll behöver först uppdateras manuellt.
+Ett bygge publicerar aldrig något på GitHub. Vid automatiserade tester används
+`LOAN_SKIP_UPDATE_CHECK=1` för att undvika nätverksanrop och uppdateringsdialoger;
+det stänger inte av den manuella knappen.
 
 Före varje paketerad start som migrerar en befintlig, icke-tom databas skapas
 en konsekvent SQLite-backup i `backups` bredvid vald databas, med versionsnummer,
@@ -87,7 +152,7 @@ Kräver Windows x64, Python 3.13 med Tk och Inno Setup 6 (officiell nedladdning:
 
 Skriptet bygger en isolerad `build\windows\venv` från
 `requirements-build.txt`, en PyInstaller **onedir** i `dist\LoanInventory`,
-kontrollerar paketet och kompilerar `dist\installer\LoanInventory-1.13.2-Setup.exe`.
+kontrollerar paketet och kompilerar `dist\installer\LoanInventory-1.18.3-Setup.exe`.
 Det ändrar inte installerade Python-paket i utvecklingsmiljön.
 Första bygget behöver nätåtkomst till PyPI; installeraren behöver inte nätet.
 Inno Setup måste installeras separat; byggskriptet hämtar inga okända verktyg.
@@ -109,13 +174,16 @@ $env:TEMP = "$PWD\build\windows\scratch"
 $env:TMP = $env:TEMP
 .\build\windows\venv\Scripts\python.exe -B -m unittest discover -s tests -p "test_*.py"
 .\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory
-# Testpaket med egen AppId, utan genvägar eller avinstallationsregistrering:
+# Testpaket med egen AppId, isolerade genvägar och ingen avinstallationsregistrering:
 .\windows-installation\Build-Setup.ps1 -Python "C:\sökväg\till\python.exe" -TestInstall
-.\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory --installer dist\installer\LoanInventory-1.13.2-TestSetup.exe
+.\build\windows\venv\Scripts\python.exe -B windows-installation\smoke_bundle.py dist\LoanInventory --installer dist\installer\LoanInventory-1.18.3-TestSetup.exe
 ```
 
-`-TestInstall` bygger separat `*-TestSetup.exe` med annan AppId, utan genvägar,
-autostart eller Windows avinstallationsregistrering. Använd endast detta paket
+`-TestInstall` bygger separat `*-TestSetup.exe` med annan AppId, utan
+autostart eller Windows avinstallationsregistrering. Testgenvägar skapas endast
+under `test-shortcuts` i testets installationsmapp, aldrig på användarens skrivbord
+eller i Startmenyn. Testet verifierar ikonreferenser vid installation och
+ominstallation samt borttagning vid avinstallation. Använd endast detta paket
 för isolerade install-/uppgradering-/avinstallationstester under `build`.
 Produktionspaketet ska däremot delas som `*-Setup.exe`.
 Setup är inte kodsignerad; signering/certifikat och releasepublicering är

@@ -5,6 +5,7 @@ Målet är att hitta rätt kod med så lite onödig inläsning som möjligt.
 
 | Fil | Läs när |
 | --- | --- |
+| [Todo: buggar och förbättringar](../docs/todo.md) | Du vill registrera en bugg, se kvarvarande önskemål eller uppdatera vad som är verifierat klart. |
 | [kodkarta.md](kodkarta.md) | Du behöver hitta filer och funktioner för ett arbetsflöde. |
 | [arbetsflode.md](arbetsflode.md) | Du vill formulera en uppgift eller välja verifiering. |
 | [paminnelser.md](paminnelser.md) | Du ändrar lån, saldo, notiser eller databas. |

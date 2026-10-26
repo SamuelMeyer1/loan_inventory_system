@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from app_version import VERSION
 from launcher import prepare_server
+from simulation_store import reset_simulation
 
 
 def wait_for(predicate, seconds=30):
@@ -65,6 +66,27 @@ def run_setup(executable, arguments, environment, success=True):
     assert (result.returncode == 0) == success, f"Unexpected setup exit code {result.returncode}"
 
 
+def shortcut_properties(path, environment, reset_icon=False):
+    assert path.is_file(), f"Missing installed shortcut: {path}"
+    powershell = Path(os.environ["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    script = """
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($env:LOAN_TEST_SHORTCUT)
+if ($env:LOAN_TEST_RESET_ICON -eq '1') {
+    $shortcut.IconLocation = $shortcut.TargetPath + ',0'
+    $shortcut.Save()
+}
+[pscustomobject]@{target=$shortcut.TargetPath; icon=$shortcut.IconLocation} | ConvertTo-Json -Compress
+"""
+    result = subprocess.run(
+        [str(powershell), "-NoProfile", "-NonInteractive", "-Command", script],
+        env={**environment, "LOAN_TEST_SHORTCUT": str(path), "LOAN_TEST_RESET_ICON": str(int(reset_icon))},
+        capture_output=True, text=True, encoding="utf-8", check=True, timeout=30,
+    )
+    return json.loads(result.stdout)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("bundle", type=Path)
@@ -85,6 +107,7 @@ def main():
                               os.environ["SystemRoot"]]),
         LOCALAPPDATA=str(work / "profile"), TEMP=str(work), TMP=str(work),
         LOAN_ENABLE_NOTIFICATIONS="0",
+        LOAN_SKIP_UPDATE_CHECK="1",
     )
     storage = Path(environment["LOCALAPPDATA"]) / "LoanInventoryLauncher"
     storage.mkdir(parents=True)
@@ -95,6 +118,9 @@ def main():
         runtime = json.loads(info.stdout)
         assert runtime["version"] == VERSION and runtime["frozen"] and runtime["pyscard"]
         assert runtime["openpyxl"] == "3.1.5"
+        assert runtime["update_tls"] == {
+            "provider": "truststore", "verify_required": True, "check_hostname": True,
+        }
         help_result = subprocess.run([str(bundle / "LoanInventoryAdmin.exe"), "--help"],
                                      env=environment, capture_output=True, text=True, check=True, timeout=30)
         assert "--role" in help_result.stdout
@@ -144,45 +170,72 @@ def main():
                 assert response.status == 200 and response.read()
         for username in ("admin", "superadmin"):
             _, headers = call("api/auth/login", {"username": username, "password": username})
-            session, _ = call("api/auth/session", cookie=headers["Set-Cookie"].split(";", 1)[0])
+            staff_cookie = headers["Set-Cookie"].split(";", 1)[0]
+            session, _ = call("api/auth/session", cookie=staff_cookie)
             assert session["role"] == username
         users, _ = call("api/users")
         objects, _ = call("api/objects")
-        assert len(users) == 4 and len(objects) == 8
+        assert len(users) == 14 and len(objects) == 8
+        stats, _ = call("api/stats", cookie=staff_cookie)
+        assert stats["loaned"] == 24 and stats["overdue"] > 0
+        jobs, _ = call("api/loan-requests", cookie=staff_cookie)
+        damaged_job = next(job for job in jobs if job["request_id"] == 32)
+        assert damaged_job["unresolved_damage_quantity"] == 1 and damaged_job["stocking_blocked"]
+        assert damaged_job["unresolved_damage_description"]
+        operator_jobs, _ = call("api/loan-requests")
+        assert all("unresolved_damage_description" not in job for job in operator_jobs)
         stop(process)
         print("Frozen simulation, runtime, authenticated login and six static resources passed.")
 
         with closing(sqlite3.connect(database)) as connection, connection:
             connection.execute("CREATE TABLE installer_sentinel(value TEXT)")
             connection.execute("INSERT INTO installer_sentinel VALUES ('generated test data')")
-        process, url, _, _ = start_server("local", database)
+        earlier_backups = set((database.parent / "backups").glob("*.db"))
+        process, url, reopened_database, _ = start_server("simulation")
+        assert reopened_database == database
         data, _ = call("api/runtime")
-        assert not data["simulation"]
+        assert data["simulation"]
         if args.installer:
             run_setup(args.installer.resolve(), [f"/DIR={work / 'installed'}",
                       f"/LOG={work / 'server-busy.log'}"], environment, success=False)
         stop(process)
-        backups = list((database.parent / "backups").glob("*.db"))
+        backups = list(set((database.parent / "backups").glob("*.db")) - earlier_backups)
         assert len(backups) == 1
         for path in (database, backups[0]):
             with closing(sqlite3.connect(path)) as connection:
                 assert connection.execute("SELECT value FROM installer_sentinel").fetchone()[0] == "generated test data"
                 assert connection.execute("SELECT COUNT(*) FROM access_accounts").fetchone()[0] == 2
-        print("Existing generated database/accounts preserved; pre-migration backup verified.")
+        print("Persistent demo/database/accounts preserved on restart; pre-migration backup verified.")
 
         if args.installer:
             target = work / "installed"
             preference = storage / "preferences.json"
-            preference.write_text(json.dumps({"database": str(database), "mode": "local"}), encoding="utf-8")
+            preference.write_text(json.dumps({"database": str(database), "mode": "simulation"}), encoding="utf-8")
             before = {path: path.read_bytes() for path in (database, preference, backups[0])}
             setup = args.installer.resolve()
-            setup_args = [f"/DIR={target}", "/TASKS=", f"/LOG={work / 'install.log'}"]
+            setup_args = [f"/DIR={target}", "/TASKS=desktopicon", f"/LOG={work / 'install.log'}"]
             run_setup(setup, setup_args, environment)
             assert (target / "LoanInventory.exe").is_file()
+            icon = target / f"LoanInventory-{VERSION}.ico"
+            assert icon.read_bytes() == (ROOT / "build" / "windows" / "loan-inventory.ico").read_bytes()
+            shortcuts = [target / "test-shortcuts" / folder / "Loan Inventory.lnk"
+                         for folder in ("Start Menu", "Desktop")]
+            for shortcut in shortcuts:
+                properties = shortcut_properties(shortcut, environment)
+                assert Path(properties["target"]) == target / "LoanInventory.exe"
+                icon_path, index = properties["icon"].rsplit(",", 1)
+                assert Path(icon_path) == icon and int(index) == 0
+                # Recreate the old EXE-based icon reference before reinstalling.
+                shortcut_properties(shortcut, environment, reset_icon=True)
             installed_info = subprocess.run([str(target / "LoanInventoryAdmin.exe"), "--runtime-info"],
                                             env=environment, capture_output=True, text=True, check=True, timeout=30)
             assert json.loads(installed_info.stdout)["version"] == VERSION
             run_setup(setup, setup_args, environment)
+            for shortcut in shortcuts:
+                properties = shortcut_properties(shortcut, environment)
+                icon_path, index = properties["icon"].rsplit(",", 1)
+                assert Path(icon_path) == icon and int(index) == 0
+            print("Desktop/Start Menu shortcuts reference the versioned box icon after install and reinstall.")
             assert all(path.read_bytes() == value for path, value in before.items())
             gui = subprocess.Popen([str(target / "LoanInventory.exe")], env=environment)
             children.append(gui)
@@ -195,8 +248,23 @@ def main():
             assert gui.wait(timeout=10) == 0
             run_setup(uninstaller, [f"/LOG={work / 'uninstall.log'}"], environment)
             wait_for(lambda: not (target / "LoanInventory.exe").exists())
+            assert not icon.exists() and not any(path.exists() for path in shortcuts)
             assert all(path.read_bytes() == value for path, value in before.items())
             print("Silent install/reinstall, running-app refusal, uninstall and data preservation passed.")
+        archived_demo = reset_simulation(storage)
+        assert archived_demo is not None
+        with closing(sqlite3.connect(archived_demo)) as connection:
+            assert connection.execute("SELECT value FROM installer_sentinel").fetchone()[0] == "generated test data"
+        process, url, restored_database, _ = start_server("simulation")
+        assert restored_database == database
+        _, headers = call("api/auth/login", {"username": "admin", "password": "admin"})
+        data, _ = call("api/stats", cookie=headers["Set-Cookie"].split(";", 1)[0])
+        assert data["loaned"] == 24
+        with closing(sqlite3.connect(restored_database)) as connection:
+            assert connection.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 15
+            assert connection.execute("SELECT name FROM sqlite_master WHERE name='installer_sentinel'").fetchone() is None
+        stop(process)
+        print("Demo reset preserved its archive and regenerated the rich simulation successfully.")
     finally:
         for process in children:
             stop(process)

@@ -44,6 +44,18 @@ def initialize_database() -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS admin_notification_reads (
+                username TEXT NOT NULL REFERENCES access_accounts(username) ON DELETE CASCADE,
+                event_type TEXT NOT NULL CHECK(event_type IN ('request', 'loan')),
+                last_event_id INTEGER NOT NULL DEFAULT 0 CHECK(last_event_id >= 0),
+                PRIMARY KEY(username, event_type)
+            );
+            CREATE TABLE IF NOT EXISTS admin_notification_shared_reads (
+                event_type TEXT PRIMARY KEY CHECK(event_type IN ('request', 'loan')),
+                last_event_id INTEGER NOT NULL DEFAULT 0 CHECK(last_event_id >= 0)
+            );
+            INSERT OR IGNORE INTO admin_notification_shared_reads (event_type, last_event_id)
+                SELECT event_type, MAX(last_event_id) FROM admin_notification_reads GROUP BY event_type;
             CREATE TABLE IF NOT EXISTS local_test_accounts (
                 username TEXT PRIMARY KEY
             );
@@ -223,10 +235,32 @@ def initialize_database() -> None:
             "updated_at": "TEXT",
             "privacy_notice_acknowledged_at": "TEXT",
             "borrow_override": "INTEGER NOT NULL DEFAULT 0",
+            "last_borrowed_at": "TEXT",
         }
         for column_name, column_type in missing_user_columns.items():
             if column_name not in user_columns:
                 db.execute(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}")
+
+        db.execute("""
+            UPDATE users SET last_borrowed_at = (
+                SELECT MAX(datetime(checkout_time)) FROM loans WHERE loans.user_id = users.user_id
+            )
+            WHERE EXISTS (
+                SELECT 1 FROM loans WHERE loans.user_id = users.user_id
+                AND datetime(checkout_time) IS NOT NULL
+                AND (datetime(users.last_borrowed_at) IS NULL OR datetime(checkout_time) > datetime(users.last_borrowed_at))
+            )
+        """)
+        db.execute("""
+            CREATE TRIGGER IF NOT EXISTS remember_last_borrowed_at
+            AFTER INSERT ON loans WHEN datetime(NEW.checkout_time) IS NOT NULL
+            BEGIN
+                UPDATE users SET last_borrowed_at = datetime(NEW.checkout_time)
+                WHERE user_id = NEW.user_id AND (
+                    datetime(last_borrowed_at) IS NULL OR datetime(NEW.checkout_time) > datetime(last_borrowed_at)
+                );
+            END;
+        """)
 
         loan_columns = [column["name"] for column in db.execute("PRAGMA table_info(loans)").fetchall()]
         missing_loan_columns = {

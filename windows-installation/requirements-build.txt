@@ -9,3 +9,4 @@ setuptools==80.9.0
 openpyxl==3.1.5
 et-xmlfile==2.0.0
 pyscard==2.3.1
+truststore==0.10.5

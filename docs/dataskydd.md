@@ -64,18 +64,27 @@ LAN-/produktionsmiljö.
 
 ### Isolerad testmiljö
 
-Startfönstret (`python -B launcher.py`) har ett separat simuleringsläge. Varje
-start skapar en ny databas med fejkdata och lokala testkonton; befintliga filer
-kopieras eller ersätts inte. Simuleringen binds bara till loopback och spärrar
+Startfönstret (`python -B launcher.py`) har ett separat simuleringsläge.
+Första starten skapar en märkt databas med fejkdata och lokala testkonton
+under `%LOCALAPPDATA%\LoanInventoryLauncher\simulations\demo.db`.
+Senare starter behåller teständringar och datum. Simuleringen binds bara till loopback och spärrar
 externa transporter och fysisk kortläsning även om inställningar ändras i appen.
 Det skiljer sig från notifieringssimuleringen, som annars kan skicka till en
 testmottagare. Testfilerna sparas lokalt och raderas inte automatiskt.
 
 Startfönstrets vanliga lokala-/LAN-lägen använder vald databas och kan migrera
-dess schema. Externa utskick är avstängda vid start via detta fönster. En
-tidigare simuleringsfil som öppnas i vanligt lokalt läge är inte längre i
-det särskilt spärrade simuleringsläget. Använd aldrig verkliga personuppgifter
-i simuleringsfilerna.
+dess schema. Externa utskick är avstängda vid start via detta fönster.
+Märkta demodatabaser nekas i vanligt lokalt-/LAN-läge; omärkta befintliga
+databaser nekas i det nya simuleringsläget. Äldre tillfälliga simuleringsfiler
+importeras inte automatiskt. Använd aldrig verkliga personuppgifter i demon.
+
+Demodatan består av påhittade personer och företag, `example.invalid`-adresser
+och tomma telefonnummer. Den skapas lokalt från kod, inte från en medföljande
+databaskopia. Återställ demodata kräver stoppad simulering och bekräftelse.
+Den gamla demon arkiveras som `demo.before-reset-*.db` och en ny skapas vid
+nästa start. Även arkiven kan innehålla det användaren själv skrivit under
+testning; de raderas inte automatiskt. En separat databaslåsning hindrar
+återställning eller parallell serverstart medan demon används.
 
 Startfönstrets HTTP-diagnostik loggar endast metod, statuskod och behandlingstid,
 inte begärans URL, parametrar, cookies eller formulärdata. Start-/felutskrifter
@@ -114,7 +123,32 @@ kan innehålla andra personers uppgifter. Detta är underlag för ett registerut
 inte en automatiskt komplett juridisk svarshandling.
 
 **Rättelse:** Ändra aktuella profiluppgifter i Admin efter kontroll av begäran.
+
+**Inaktivitetsvarning:** Systemadmin kan välja en tidsgräns (standard 365 dagar)
+och slå av/på märkningen i System → Allmänt. Den spärrar eller raderar ingen.
+Profilen sparar senaste utlåningsdatum även efter gallring av avslutade lån, så
+gallring inte gör personen felaktigt inaktiv. Datumet omfattas av registerunderlag
+och radering av profilen; fastställ även verksamhetens rutin för profilgallring.
+Kvarvarande lån, öppna jobb och olösta skador undantas från märkningen.
+
+**Interna Adminnotiser:** Klockan visar endast tid och typ från befintliga
+händelseloggar, inga namn eller kontaktuppgifter. Från 1.17.0 delas
+läsmarkering per notistyp av Admin och Superadmin. Att öppna panelen
+läsmarkerar den hämtade historiken för båda rollerna, utan att ändra jobbstatus.
+Den gemensamma markeringen är inte kopplad till en person eller ett konto.
+Uppgraderingen bevarar högsta tidigare lästa ID per typ; äldre kontobundna
+markeringar ligger kvar i registerunderlaget och raderas med kontot. Befintlig logggallring
+gäller; funktionen skickar inga uppgifter till e-post, Teams eller SMS.
+Skadebeskrivningar på jobbkortet lämnas endast till Admin/Superadmin,
+inte i operatörens API-svar.
 Äldre fri text, importer och externa kopior kan behöva rättas separat.
+
+**Versionskontroll:** Från 1.18.0 frågar startfönstret GitHubs publika API
+efter senaste release vid start, även i simulering. GitHub får vanlig
+nätverksmetadata (bland annat IP-adress) och appversion i User-Agent.
+Databas, låntagare, konton och inställningar skickas inte; ingen GitHub-token används.
+Efter godkännande öppnas filnedladdningen i användarens webbläsare.
+Detta är separat från de spärrade e-post-/Teams-/SMS-transporterna.
 
 **Radering:** Börja med förhandsgranskning. Aktiva lån eller förfrågningar som
 inte lagerförts blockerar radering. En behörig handläggare bedömer rättigheten,

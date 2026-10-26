@@ -174,10 +174,29 @@ def list_loan_requests() -> list[dict[str, Any]]:
         """
         SELECT r.*, u.name AS user_name, u.department AS user_department,
                o.name AS object_name, o.location AS object_location,
-               o.tornado_id AS object_store
+               o.tornado_id AS object_store,
+               COALESCE(l.returned_quantity, 0) AS returned_quantity,
+               COALESCE(l.remaining_quantity, r.quantity) AS remaining_quantity,
+               COALESCE(d.quantity, 0) AS unresolved_damage_quantity,
+               COALESCE(d.descriptions, '') AS unresolved_damage_description,
+               (COALESCE(l.remaining_quantity, 0) > 0 OR COALESCE(d.quantity, 0) > 0) AS stocking_blocked
         FROM loan_requests r
         JOIN users u ON u.user_id = r.user_id
         JOIN objects o ON o.object_id = r.object_id
+        LEFT JOIN (
+            SELECT loan_request_id, SUM(returned_quantity) AS returned_quantity,
+                   SUM(quantity - returned_quantity) AS remaining_quantity
+            FROM loans
+            WHERE loan_request_id IS NOT NULL
+            GROUP BY loan_request_id
+        ) l ON l.loan_request_id = r.request_id
+        LEFT JOIN (
+            SELECT l.loan_request_id, SUM(d.damaged_quantity) AS quantity,
+                   GROUP_CONCAT(d.damage_description, char(10)) AS descriptions
+            FROM loan_returns d JOIN loans l ON l.loan_id = d.loan_id
+            WHERE d.damage_status = 'quarantined'
+            GROUP BY l.loan_request_id
+        ) d ON d.loan_request_id = r.request_id
         ORDER BY
             CASE r.status
                 WHEN 'requested' THEN 1
@@ -231,6 +250,11 @@ def create_loan_request(payload: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"Objektet {object_id} hittades inte.")
             if is_consumable_object(dict(object_item)):
                 raise ValueError("Förbrukningsvaror kan inte lånas. Använd sidan Förbrukningsvara.")
+            if quantity > object_item["available_quantity"]:
+                raise ValueError(
+                    f"Det finns bara {object_item['available_quantity']} tillgängliga av {object_item['name']}. "
+                    "Uppdatera antalet i låneförfrågan."
+                )
             duplicate = db.execute(
                 """SELECT request_id FROM loan_requests
                    WHERE user_id = ? AND object_id = ? AND lending_date = ? AND return_date = ?
@@ -298,9 +322,19 @@ def update_loan_request_status(payload: dict[str, Any]) -> dict[str, Any]:
     new_available_quantity = None
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        current_status = db.execute("SELECT status FROM loan_requests WHERE request_id = ?", (request_id,)).fetchone()
+        current_status = db.execute(
+            "SELECT status, COALESCE(request_group_id, request_id) AS group_id FROM loan_requests WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
         if not current_status:
             raise ValueError("Jobbet hittades inte.")
+        if status in ("approved", "prepared", "loaned"):
+            group_size = db.execute(
+                "SELECT COUNT(*) FROM loan_requests WHERE COALESCE(request_group_id, request_id) = ?",
+                (current_status["group_id"],),
+            ).fetchone()[0]
+            if group_size > 1:
+                raise ValueError("Flytta hela förfrågan till nästa steg, inte en enskild artikel.")
         if current_status["status"] in ("returned", "stocked") and status not in (current_status["status"], "stocked"):
             raise ValueError("Ett återlämnat jobb kan inte öppnas igen.")
         if status == "stocked":
@@ -404,14 +438,17 @@ def update_loan_request_group_status(payload: dict[str, Any]) -> dict[str, Any]:
         if not request_rows:
             raise ValueError("Förfrågan hittades inte.")
 
-        invalid = [request for request in request_rows if request["status"] not in (previous_status, status)]
+        invalid = [
+            request for request in request_rows
+            if REQUEST_STATUSES.index(request["status"]) < REQUEST_STATUSES.index(previous_status)
+        ]
         if invalid:
             raise ValueError(
                 f"Alla artiklar måste vara {previous_status} innan förfrågan kan ändras till {status}."
             )
 
         for request_row in request_rows:
-            if request_row["status"] == status:
+            if REQUEST_STATUSES.index(request_row["status"]) >= REQUEST_STATUSES.index(status):
                 continue
             request = dict(request_row)
             available = None
