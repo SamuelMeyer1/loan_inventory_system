@@ -9,11 +9,11 @@ from datetime import datetime
 from backend.services import privacy
 
 _initialization_lock = threading.Lock()
-READ = {"/api/stats", "/api/objects", "/api/search", "/api/users", "/api/loans", "/api/loan-requests", "/api/system-settings"}
+READ = {"/api/stats", "/api/objects", "/api/object-categories", "/api/search", "/api/users", "/api/loans", "/api/loan-requests", "/api/system-settings"}
 ADMIN_READ = {"/api/statistics", "/api/groups", "/api/consumable-reports", "/api/damaged-returns", "/api/admin-notifications"}
 SUPER_READ = {"/api/events", "/api/privacy/export", "/api/privacy/policy", "/api/privacy/retention", "/api/privacy/erase"}
 ADMIN_WRITE = {
-    ("POST", path) for path in ("/api/checkout", "/api/issue", "/api/objects", "/api/users", "/api/users/borrow-override", "/api/users/card", "/api/smartcard/read", "/api/users/scan-card", "/api/groups", "/api/loans/reminder", "/api/loan-requests/pickup-email")
+    ("POST", path) for path in ("/api/checkout", "/api/issue", "/api/objects", "/api/object-categories", "/api/users", "/api/users/borrow-override", "/api/users/card", "/api/smartcard/read", "/api/users/scan-card", "/api/groups", "/api/loans/reminder", "/api/loan-requests/pickup-email")
 } | {("PUT", path) for path in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests/details", "/api/consumable-reports")} | {
     ("DELETE", path) for path in ("/api/objects", "/api/users", "/api/groups", "/api/loan-requests")}
 ADMIN_WRITE.add(("POST", "/api/damaged-returns/resolve"))

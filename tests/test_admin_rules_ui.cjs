@@ -16,17 +16,21 @@ const get = (selector) => {
 const calls = [];
 const messages = [];
 const context = vm.createContext({
-  document: { querySelector: get },
+  document: { querySelector: get, querySelectorAll: () => [] },
   localStorage: { getItem: () => "sv" },
   establishSession: async () => false,
   escapeHtml: (value) => String(value).replaceAll("<", "&lt;"),
   formatTime: (value) => value,
   showToast: (message) => messages.push(message),
+  unique: (values) => [...new Set(values)],
+  objectDisplayImage: (item) => item.image_data || "",
+  statusBadge: (status) => `<span>${status}</span>`,
 });
 for (const name of ["app.js", "translations.js", "i18n.js", "actions.js"]) {
   vm.runInContext(fs.readFileSync(`frontend/js/${name}`, "utf8"), context);
 }
 vm.runInContext("refreshAll = async () => {}; state.role = 'superadmin';", context);
+const state = vm.runInContext("state", context);
 
 async function main() {
   get("#inactiveUserWarningEnabled").checked = true;
@@ -59,6 +63,62 @@ async function main() {
   assert.deepEqual(calls.at(-1), { url: "/api/admin-notifications/read", payload: { up_to_event_id: 5 } });
   assert.equal(get("#adminNotificationCount").textContent, "0");
   assert.equal(get("#adminNotifications").classes.has("has-unread"), false);
+
+  context.applyRole = () => {};
+  state.objectCategories = ["Instrument"];
+  state.objects = [{ object_id: "OBJ-1", name: "Tryckgivare", category: "Instrument",
+    article_number: "VOL-123", brand: "Pentronic", model: "100-3", measurement_range: "20-100 C",
+    unit_volvo_ids: "ID-1\nID-2",
+    unit_price: "1458.50", location: "Våning 8, blått skåp 1", total_quantity: 2,
+    available_quantity: 2, min_quantity: 0, status: "Tillgänglig", device: "legacy" }];
+  get("#objectSearch").value = "";
+  get("#categoryFilter").value = "Alla";
+  get("#statusFilter").value = "Alla";
+  context.renderObjects();
+  assert.match(get("#objectsGrid").innerHTML, /VOL-123/);
+  assert.match(get("#objectsGrid").innerHTML, /Pentronic/);
+  assert.match(get("#objectsGrid").innerHTML, /Våning 8, blått skåp 1/);
+  assert.match(get("#objectsGrid").innerHTML, /1\s*458,50 kr/);
+  assert.match(get("#objectsGrid").innerHTML, /Visa äldre uppgifter/);
+  state.objects[0].article_number = "";
+  context.renderObjects();
+  assert.match(get("#objectsGrid").innerHTML, /2 exemplars-ID:n/);
+  state.objects[0].unit_volvo_ids = "004712";
+  context.renderObjects();
+  assert.match(get("#objectsGrid").innerHTML, />004712<\/p>/);
+  state.objects[0].article_number = "VOL-123";
+
+  context.readSelectedObjectImage = async () => "";
+  context.resetObjectForm = () => {};
+  context.refreshAll = async () => {};
+  context.setView = () => {};
+  get("#newObjectId").value = "OBJ-1";
+  get("#newObjectName").value = "Tryckgivare";
+  get("#newObjectCategory").value = "Instrument";
+  get("#newObjectArticle").value = "VOL-123";
+  get("#newObjectBrand").value = "Pentronic";
+  get("#newObjectModel").value = "100-3";
+  get("#newObjectMeasurementRange").value = "20-100 C";
+  get("#newObjectUnitPrice").value = "1458.50";
+  get("#newObjectLocation").value = "Våning 8, blått skåp 1";
+  get("#newObjectTotal").value = "2";
+  get("#newObjectAvailable").value = "2";
+  get("#newObjectMin").value = "0";
+  state.editingObjectId = "OBJ-1";
+  context.api = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return url === "/api/objects" ? { object_id: "OBJ-1" } : { name: "Sensorer" };
+  };
+  await context.saveObject({ preventDefault() {} });
+  assert.equal(calls.at(-1).url, "/api/objects");
+  assert.equal(calls.at(-1).payload.unit_price, "1458.50");
+  assert.equal("device" in calls.at(-1).payload, false);
+  assert.equal("tornado_id" in calls.at(-1).payload, false);
+
+  get("#objectCategoryName").value = "Sensorer";
+  await context.addObjectCategory({ preventDefault() {} });
+  assert.equal(state.objectCategories.at(-1), "Sensorer");
+  assert.match(get("#newObjectCategory").innerHTML, /Sensorer/);
 
   get("#adminNotifications").open = true;
   let readCursor = 0;

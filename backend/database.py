@@ -71,9 +71,14 @@ def initialize_database() -> None:
                 object_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 category TEXT NOT NULL,
+                brand TEXT,
+                model TEXT,
+                measurement_range TEXT,
+                unit_price TEXT,
                 item_type TEXT,
                 description TEXT,
                 article_number TEXT,
+                unit_volvo_ids TEXT,
                 supplier_article_number TEXT,
                 location TEXT NOT NULL,
                 storage_location_2 TEXT,
@@ -92,6 +97,9 @@ def initialize_database() -> None:
                 status TEXT NOT NULL,
                 is_consumable INTEGER NOT NULL DEFAULT 0,
                 image_data TEXT
+            );
+            CREATE TABLE IF NOT EXISTS object_categories (
+                name TEXT PRIMARY KEY COLLATE NOCASE
             );
 
             CREATE TABLE IF NOT EXISTS users (
@@ -202,6 +210,11 @@ def initialize_database() -> None:
         )
         columns = [column["name"] for column in db.execute("PRAGMA table_info(objects)").fetchall()]
         missing_columns = {
+            "brand": "TEXT",
+            "model": "TEXT",
+            "measurement_range": "TEXT",
+            "unit_price": "TEXT",
+            "unit_volvo_ids": "TEXT",
             "item_type": "TEXT",
             "description": "TEXT",
             "supplier_article_number": "TEXT",
@@ -219,6 +232,8 @@ def initialize_database() -> None:
         for column_name, column_type in missing_columns.items():
             if column_name not in columns:
                 db.execute(f"ALTER TABLE objects ADD COLUMN {column_name} {column_type}")
+        db.execute("""INSERT OR IGNORE INTO object_categories (name)
+            SELECT DISTINCT TRIM(category) FROM objects WHERE TRIM(category) <> ''""")
 
         user_columns = [column["name"] for column in db.execute("PRAGMA table_info(users)").fetchall()]
         missing_user_columns = {

@@ -62,16 +62,37 @@ class LauncherWindowTest(unittest.TestCase):
     def test_release_button_opens_only_browser_and_fits_minimum_window(self):
         self.app.root.deiconify()
         self.app.root.geometry("600x650")
+        self.app.tabs.select(self.app.settings_tab)
         self.app.root.update()
         self.assertTrue(self.app.updates_button.winfo_ismapped())
         self.assertEqual(self.app.updates_button.winfo_width(), self.app.updates_button.winfo_reqwidth())
         self.assertGreater(self.app.updates_button.winfo_height(), 15)
+        self.app.tabs.select(self.app.log_tab)
+        self.app.root.update()
         self.assertLess(self.app.console.winfo_rooty() + self.app.console.winfo_height(),
                         self.app.root.winfo_rooty() + self.app.root.winfo_height())
         self.app.updates_button.invoke()
         self.browser.assert_called_once_with(RELEASES_URL)
         self.assertIsNone(self.app.process)
         self.errors.assert_not_called()
+
+    def test_compact_start_tab_and_mode_specific_settings(self):
+        self.app.root.deiconify()
+        self.app.root.update()
+        self.assertEqual(self.app.tabs.select(), str(self.app.start_tab))
+        self.assertLess(self.app.root.winfo_height(), 400)
+        self.app.tabs.select(self.app.settings_tab)
+        for mode, database, network, simulation in (
+                ("local", True, False, False),
+                ("lan", True, True, False),
+                ("simulation", False, False, True)):
+            with self.subTest(mode=mode):
+                self.app.mode.set(mode)
+                self.app.update_fields()
+                self.app.root.update()
+                self.assertEqual(bool(self.app.database_section.winfo_ismapped()), database)
+                self.assertEqual(bool(self.app.network_section.winfo_ismapped()), network)
+                self.assertEqual(bool(self.app.simulation_section.winfo_ismapped()), simulation)
 
     def test_release_browser_failure_reports_manual_url(self):
         self.browser.return_value = False

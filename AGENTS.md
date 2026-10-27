@@ -19,6 +19,10 @@ Start from the repo root: `python main.py`; open `http://127.0.0.1:8000`.
 
 - `main.py` → `backend/server.py` → `backend/services/` → `backend/database.py`.
 - Services own business rules; `services/__init__.py` exports server entry points.
+- Physical device protocols belong in `hardware/<device>/`; keep user lookup,
+  database writes and authorization in backend service adapters.
+- External software transports belong in `software/<integration>/`; keep
+  notification policy, simulation safeguards and secrets in backend services.
 - Frontend uses shared globals and ordered scripts in `frontend/index.html`.
   `app.js` owns state/rendering; `actions.js` handles actions; `api.js` handles fetch.
 - Schema changes need migration logic in `backend/database.py` for existing data.

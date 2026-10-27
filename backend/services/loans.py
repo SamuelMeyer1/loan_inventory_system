@@ -1030,7 +1030,7 @@ def _return_integer(value: Any, minimum: int) -> int:
 
 
 def list_damaged_returns() -> list[dict[str, Any]]:
-    return rows("""SELECT r.*, l.object_id, o.name AS object_name
+    return rows("""SELECT r.*, l.object_id, l.loan_request_id, o.name AS object_name
         FROM loan_returns r JOIN loans l ON l.loan_id = r.loan_id
         JOIN objects o ON o.object_id = l.object_id
         WHERE r.damage_status = 'quarantined' ORDER BY r.return_id""")

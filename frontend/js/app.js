@@ -4,6 +4,7 @@
 
 const state = {
   objects: [],
+  objectCategories: [],
   loanCart: [],
   returnBusy: false,
   returnSummary: null,
@@ -113,10 +114,11 @@ function setView(view) {
 }
 
 async function refreshAll() {
-  const [stats, statistics, objects, users, groups, loans, jobs, consumableReports, events, systemSettings, damagedReturns] = await Promise.all([
+  const [stats, statistics, objects, objectCategories, users, groups, loans, jobs, consumableReports, events, systemSettings, damagedReturns] = await Promise.all([
     api("/api/stats"),
     state.role === "operator" ? Promise.resolve({}) : api("/api/statistics"),
     api("/api/objects"),
+    api("/api/object-categories"),
     api(state.role === "operator" ? "/api/users" : "/api/users?include_inactive=1"),
     state.role === "operator" ? Promise.resolve([]) : api("/api/groups"),
     api("/api/loans"),
@@ -128,6 +130,7 @@ async function refreshAll() {
   ]);
 
   state.objects = objects;
+  state.objectCategories = objectCategories;
   state.statistics = statistics;
   state.users = users;
   state.groups = groups;
@@ -662,8 +665,19 @@ function renderCheckoutUserDetails(user = null) {
 }
 
 function renderFilters() {
-  fillSelect("#categoryFilter", ["Alla", ...unique(state.objects.map((item) => item.category))]);
+  fillSelect("#categoryFilter", ["Alla", ...unique(state.objectCategories)]);
   fillSelect("#statusFilter", ["Alla", ...unique(state.objects.map((item) => item.status))]);
+  renderObjectCategorySelect();
+}
+
+function renderObjectCategorySelect(selected = $("#newObjectCategory")?.value || "") {
+  const select = $("#newObjectCategory");
+  if (!select) return;
+  const placeholder = state.language === "en" ? "Select category" : "Välj kategori";
+  const categories = unique(state.objectCategories).sort((first, second) => first.localeCompare(second));
+  select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>${categories.map((name) =>
+    `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}`;
+  if (categories.includes(selected)) select.value = selected;
 }
 
 function fillSelect(selector, values) {
@@ -683,7 +697,11 @@ function renderObjects() {
   const filtered = state.objects.filter((item) => {
     const searchable = [
       item.object_id,
+      item.unit_volvo_ids,
       item.category,
+      item.brand,
+      item.model,
+      item.measurement_range,
       item.item_type,
       item.description,
       item.article_number,
@@ -704,35 +722,62 @@ function renderObjects() {
       (category === "Alla" || item.category === category) &&
       (status === "Alla" || item.status === status);
   });
-
-  $("#objectsBody").innerHTML = filtered.slice(0, TABLE_RENDER_LIMIT).map((item) => `
-    <tr class="${item.available_quantity <= item.min_quantity ? "low" : ""}">
-      <td>${objectThumbnail(item)}</td>
-      <td>${escapeHtml(item.category)}</td>
-      <td>${escapeHtml(item.item_type || "")}</td>
-      <td>${escapeHtml(item.description || "")}</td>
-      <td>${escapeHtml(item.article_number || "")}</td>
-      <td>${escapeHtml(item.name)}</td>
-      <td>${escapeHtml(item.supplier_article_number || "")}</td>
-      <td>${item.available_quantity} / ${item.total_quantity}${item.quarantined_quantity ? `<small class="request-reference">${t("damage.quarantined")}: ${item.quarantined_quantity}</small>` : ""}</td>
-      <td>${item.min_quantity}</td>
-      <td>${escapeHtml(item.location)}</td>
-      <td>${escapeHtml(item.tornado_id)}</td>
-      <td>${escapeHtml(item.belongs_to_instrument || "")}</td>
-      <td>${escapeHtml(item.device || "")}</td>
-      <td>${escapeHtml(item.belongs_to || "")}</td>
-      <td>${escapeHtml(item.last_changed || "")}</td>
-      <td>${escapeHtml(item.search_words || "")}</td>
-      <td>${escapeHtml(item.tray_for || "")}</td>
-      <td>${escapeHtml(item.storage_location_2 || "")}</td>
-      <td>${escapeHtml(item.lift_tray || item.door_id || "")}</td>
-      <td>${statusBadge(item.status)}</td>
-      <td class="admin-only">
-        <button class="table-action-button" type="button" data-edit-object="${escapeHtml(item.object_id)}">Redigera</button>
-        <button class="danger-button" type="button" data-delete-object="${escapeHtml(item.object_id)}">Ta bort</button>
-      </td>
-    </tr>
-  `).join("");
+  $("#objectsGrid").innerHTML = filtered.slice(0, TABLE_RENDER_LIMIT).map((item) => {
+    const image = objectDisplayImage(item);
+    const legacyDetails = [
+      [t("field.internalId"), item.object_id],
+      [t("field.unitVolvoIds"), item.unit_volvo_ids],
+      [t("table.supplierArticle"), item.supplier_article_number],
+      [t("field.legacyType"), item.item_type],
+      [t("field.legacyDesignation"), item.description],
+      [t("table.store"), item.tornado_id],
+      [t("field.legacyDoor"), item.door_id],
+      [t("table.storage2"), item.storage_location_2],
+      [t("table.belongsInstrument"), item.belongs_to_instrument],
+      [t("table.belongsTo"), item.belongs_to],
+      [t("table.device"), item.device],
+      [t("table.lastChanged"), item.last_changed],
+      [t("table.keywords"), item.search_words],
+      [t("table.trayFor"), item.tray_for],
+      [t("table.liftTray"), item.lift_tray],
+      [t("table.reorderPoint"), item.min_quantity],
+    ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+    const price = item.unit_price === null || item.unit_price === "" ? "" :
+      Number(item.unit_price).toLocaleString(state.language === "en" ? "en-GB" : "sv-SE", {
+        minimumFractionDigits: 2, maximumFractionDigits: 2,
+      });
+    const unitVolvoIds = String(item.unit_volvo_ids || "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    const volvoIdSummary = item.article_number || (unitVolvoIds.length === 1
+      ? unitVolvoIds[0]
+      : unitVolvoIds.length
+        ? t("objects.unitIdCount", { count: unitVolvoIds.length })
+        : t("objects.noVolvoId"));
+    return `
+      <article class="object-card ${item.available_quantity <= item.min_quantity ? "object-card-low" : ""}">
+        <div class="object-card-visual ${image ? "" : "object-card-no-image"}">${image
+          ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.name)}">`
+          : `<span>${escapeHtml(String(item.category || "Objekt").slice(0, 3).toUpperCase())}</span>`}</div>
+        <div class="object-card-content">
+          <div class="object-card-top"><span class="object-category">${escapeHtml(item.category)}</span>${statusBadge(item.status)}</div>
+          <h2>${escapeHtml(item.name)}</h2>
+          <p class="object-card-id">${escapeHtml(volvoIdSummary)}</p>
+          <dl class="object-card-fields">
+            ${item.brand ? `<div><dt>${escapeHtml(t("field.brand"))}</dt><dd>${escapeHtml(item.brand)}</dd></div>` : ""}
+            ${item.model ? `<div><dt>${escapeHtml(t("field.model"))}</dt><dd>${escapeHtml(item.model)}</dd></div>` : ""}
+            ${item.measurement_range ? `<div><dt>${escapeHtml(t("field.measurementRange"))}</dt><dd>${escapeHtml(item.measurement_range)}</dd></div>` : ""}
+            <div><dt>${escapeHtml(t("field.location"))}</dt><dd>${escapeHtml(item.location)}</dd></div>
+            <div><dt>${escapeHtml(t("field.stock"))}</dt><dd>${item.available_quantity} / ${item.total_quantity}${item.quarantined_quantity ? ` · ${escapeHtml(t("damage.quarantined"))}: ${item.quarantined_quantity}` : ""}</dd></div>
+            ${price ? `<div><dt>${escapeHtml(t("field.unitPrice"))}</dt><dd>${escapeHtml(price)} kr</dd></div>` : ""}
+          </dl>
+          ${legacyDetails.length ? `<details class="object-card-details"><summary>${escapeHtml(t("objects.moreDetails"))}</summary><dl>${legacyDetails.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join("")}</dl></details>` : ""}
+          <div class="object-card-actions admin-only">
+            <button class="table-action-button" type="button" data-edit-object="${escapeHtml(item.object_id)}">${escapeHtml(t("objects.edit"))}</button>
+            <button class="danger-button" type="button" data-delete-object="${escapeHtml(item.object_id)}">${escapeHtml(t("objects.delete"))}</button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 
   document.querySelectorAll("[data-edit-object]").forEach((button) => {
     button.addEventListener("click", () => startEditObject(button.dataset.editObject));
@@ -771,8 +816,12 @@ function renderAdminObjectsTable() {
 function objectSearchText(item) {
   return [
     item.object_id,
+    item.unit_volvo_ids,
     item.name,
     item.category,
+    item.brand,
+    item.model,
+    item.measurement_range,
     item.item_type,
     item.description,
     item.article_number,
@@ -1052,6 +1101,10 @@ function renderJobs() {
   document.querySelectorAll("[data-open-job-id]").forEach((button) => {
     button.addEventListener("click", () => openJobDetail(Number(button.dataset.openJobId)));
   });
+  document.querySelectorAll("[data-open-damage-report]").forEach((button) => {
+    button.addEventListener("click", () => openDamageReport(
+      Number(button.dataset.openDamageReport), button.dataset.objectId));
+  });
   bindJobDragAndDrop();
 }
 
@@ -1173,24 +1226,24 @@ function renderJobGroup(group) {
   `;
 }
 
-function jobWarnings(job) {
+function jobWarnings(job, includeDamage = true) {
   const warnings = [];
   if (job.remaining_quantity > 0 && (job.returned_quantity > 0 ||
       (["returned", "stocked"].includes(job.status) && job.stocking_blocked))) {
     warnings.push(t("jobs.remainingReturn", { count: job.remaining_quantity }));
   }
-  if (job.unresolved_damage_quantity > 0) {
+  if (includeDamage && job.unresolved_damage_quantity > 0) {
     warnings.push(t("jobs.unresolvedDamage", { count: job.unresolved_damage_quantity }));
   }
   return warnings;
 }
 
-function renderJobWarnings(job) {
-  const warnings = jobWarnings(job);
+function renderJobWarnings(job, includeDamage = true) {
+  const warnings = jobWarnings(job, includeDamage);
   if (!warnings.length) return "";
   return `<div class="job-warning-text">
     ${warnings.map((text) => `<p>${escapeHtml(text)}</p>`).join("")}
-    ${job.unresolved_damage_quantity > 0 ? `<p>${escapeHtml(job.unresolved_damage_description || "")}</p><p>${escapeHtml(t("jobs.damageAction"))}</p>` : ""}
+    ${includeDamage && job.unresolved_damage_quantity > 0 ? `<p>${escapeHtml(job.unresolved_damage_description || "")}</p><p>${escapeHtml(t("jobs.damageAction"))}</p>` : ""}
   </div>`;
 }
 
@@ -1202,9 +1255,10 @@ function renderJobGroupItem(job) {
         <strong>${escapeHtml(job.object_name)}</strong>
         <span>${escapeHtml(job.object_id)} · ${job.quantity} st · ${escapeHtml(jobStatusText(job.status))}</span>
         ${job.returned_quantity > 0 ? `<small>${escapeHtml(t("jobs.returnProgress", { returned: job.returned_quantity, remaining: job.remaining_quantity }))}</small>` : ""}
-        ${renderJobWarnings(job)}
+        ${renderJobWarnings(job, false)}
       </div>
       <div class="job-group-item-actions">
+        ${job.unresolved_damage_quantity > 0 ? `<button class="link-button" type="button" data-open-damage-report="${job.request_id}" data-object-id="${escapeHtml(job.object_id)}">${escapeHtml(t("jobs.openDamageReport"))}</button>` : ""}
         <button class="secondary-button" type="button" data-open-job-id="${job.request_id}">${state.language === "en" ? "Details" : "Detaljer"}</button>
         ${job.status === "loaned" ? `<button class="table-action-button" type="button" data-job-return-id="${job.request_id}" data-job-return-group="${job.request_group_id || job.request_id}">${escapeHtml(t("jobs.returnArticles"))}</button>` : ""}
         ${canRemove ? `<button class="danger-button" type="button" data-delete-job="${job.request_id}">${state.language === "en" ? "Remove" : "Ta bort"}</button>` : ""}
@@ -1239,6 +1293,24 @@ function openJobDetail(requestId) {
   renderJobDetailView(job);
   $("#jobDetailModal").classList.add("open");
   $("#jobDetailModal").setAttribute("aria-hidden", "false");
+}
+
+function openDamageReport(requestId, objectId) {
+  closeJobDetail();
+  setView("admin");
+  showAdminSettingsSection("damage");
+  const report = state.damagedReturns.find((item) =>
+    Number(item.loan_request_id) === requestId && item.object_id === objectId);
+  if (!report) {
+    showToast(t("jobs.damageReportUnavailable"));
+    return;
+  }
+  const element = [...document.querySelectorAll("[data-damage-report-id]")]
+    .find((item) => Number(item.dataset.damageReportId) === Number(report.return_id));
+  if (element) {
+    element.focus({ preventScroll: true });
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 }
 
 function renderJobDetailView(job) {
@@ -1355,19 +1427,24 @@ function exportSelectedJobCsv() {
 
 function exportObjectsCsv() {
   const rows = [
-    ["Objekt-ID", "Namn", "Kategori", "Typ", "Beteckning", "VOLVO-ID", "Leverantörsartikel", "Totalt antal", "Tillgängligt antal", "Min-nivå", "Plats", "Lagerplats 2", "Förråd", "Dörr/fack", "Tillhör instrument", "Device", "Tillhör", "Sökord", "Hissbricka", "Status"],
+    ["Internt Objekt-ID", "Benämning", "Kategori", "Fabrikat", "Modell", "Mätområde", "Styckpris (kr)", "VOLVO-ID", "Exemplars-ID:n", "Totalt antal", "Tillgängligt antal", "Beställningspunkt", "Placering", "Äldre typ", "Äldre beteckning", "Leverantörsartikel", "Lagerplats 2", "Förråd", "Dörr/fack", "Tillhör instrument", "Device", "Tillhör", "Sökord", "Hissbricka", "Status"],
     ...state.objects.map((item) => [
       item.object_id,
       item.name,
       item.category,
-      item.item_type || "",
-      item.description || "",
+      item.brand || "",
+      item.model || "",
+      item.measurement_range || "",
+      item.unit_price || "",
       item.article_number || "",
-      item.supplier_article_number || "",
+      item.unit_volvo_ids || "",
       item.total_quantity,
       item.available_quantity,
       item.min_quantity,
       item.location,
+      item.item_type || "",
+      item.description || "",
+      item.supplier_article_number || "",
       item.storage_location_2 || "",
       item.tornado_id,
       item.door_id || "",
@@ -1552,6 +1629,7 @@ function resetObjectForm() {
   $("#saveObjectButton").textContent = "Spara objekt";
   $("#cancelObjectEditButton").style.display = "none";
   $("#newObjectId").readOnly = false;
+  renderObjectCategorySelect("");
   $("#newObjectTotal").value = "1";
   $("#newObjectAvailable").value = "1";
   $("#newObjectMin").value = "1";
@@ -1778,6 +1856,13 @@ function bindEvents() {
   document.querySelectorAll(".admin-settings-nav-button").forEach((button) => {
     button.addEventListener("click", () => showAdminSettingsSection(button.dataset.adminSection));
   });
+  $("#addObjectCategoryButton")?.addEventListener("click", () => {
+    $("#objectCategoryForm").reset();
+    $("#objectCategoryDialog").showModal();
+    $("#objectCategoryName").focus();
+  });
+  $("#cancelObjectCategoryButton")?.addEventListener("click", () => $("#objectCategoryDialog").close());
+  $("#objectCategoryForm")?.addEventListener("submit", addObjectCategory);
   document.querySelectorAll(".system-settings-nav-button").forEach((button) => {
     button.addEventListener("click", () => showSystemSettingsSection(button.dataset.systemSection));
   });

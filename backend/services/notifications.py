@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import re
 import os
-import smtplib
-import ssl
 from datetime import datetime, timedelta
-from email.message import EmailMessage
 from typing import Any
 
 from backend.database import connect, row, rows
+from software.communications.smtp import send_email_message, send_raw_smtp_message
+from software.communications.teams import send_team_message
 
 
 def now_text() -> str:
@@ -314,20 +313,7 @@ def email_msg(subject: str, body: str, recipients: list[str], settings: dict[str
             f"{body}"
         )
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = settings["smtp_from_address"]
-    message["To"] = ", ".join(recipients)
-    message.set_content(body)
-
-    with smtplib.SMTP(settings["smtp_host"], int(settings["smtp_port"]), timeout=15) as smtp:
-        smtp.ehlo()
-        if settings.get("smtp_use_tls", "1") == "1":
-            smtp.starttls(context=ssl.create_default_context())
-            smtp.ehlo()
-        if settings.get("smtp_username"):
-            smtp.login(settings["smtp_username"], settings.get("smtp_password", ""))
-        smtp.send_message(message)
+    send_email_message(subject, body, recipients, settings)
     return len(recipients)
 
 
@@ -340,16 +326,7 @@ def raw_smtp_message(server: str, port: int, mail_from: str, rcpt_to: str, subje
         raise ValueError("Simuleringsmiljön tillåter inga externa utskick.")
     if os.environ.get("LOAN_ENABLE_NOTIFICATIONS") != "1":
         raise ValueError("Externa notiser är spärrade.")
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = mail_from
-    message["To"] = rcpt_to
-    message.set_content(body)
-    with smtplib.SMTP(server, port, timeout=10) as smtp:
-        smtp.ehlo(ehlo_name)
-        smtp.starttls(context=ssl.create_default_context())
-        smtp.ehlo(ehlo_name)
-        smtp.send_message(message)
+    send_raw_smtp_message(server, port, mail_from, rcpt_to, subject, body, ehlo_name)
 
 
 def team_msg(subject: str, body: str, recipients: list[str], settings: dict[str, str] | None = None) -> int:
@@ -363,7 +340,6 @@ def team_msg(subject: str, body: str, recipients: list[str], settings: dict[str,
     if not recipients:
         return 0
 
-    timestamp = now_text()
     is_simulation = simulation_enabled(settings)
     mode = "SIMULERING" if is_simulation else "TEAMS"
     if not teams_ready(settings):
@@ -373,14 +349,16 @@ def team_msg(subject: str, body: str, recipients: list[str], settings: dict[str,
     group_recipient = settings["teams_group_recipient"].strip()
     prefix = (settings.get("teams_subject_prefix") or "TEAMS").strip()
     for recipient in recipients:
-        raw_smtp_message(
-            settings["smtp_host"],
-            int(settings["smtp_port"]),
-            settings["smtp_from_address"],
-            group_recipient,
-            f"{prefix} {subject} {recipient}".strip(),
-            body,
-            settings.get("teams_ehlo_name") or "mailgot.ut.volvo.com",
+        send_team_message(
+            server=settings["smtp_host"],
+            port=int(settings["smtp_port"]),
+            mail_from=settings["smtp_from_address"],
+            group_recipient=group_recipient,
+            subject_prefix=prefix,
+            subject=subject,
+            recipient_tag=recipient,
+            body=body,
+            ehlo_name=settings.get("teams_ehlo_name") or "mailgot.ut.volvo.com",
         )
         sent += 1
 

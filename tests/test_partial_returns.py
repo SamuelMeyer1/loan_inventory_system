@@ -50,6 +50,48 @@ class PartialReturnsTest(unittest.TestCase):
         self.assertEqual((actual_outstanding, actual_quarantine), (outstanding, quarantine))
         self.assertEqual(available + outstanding + quarantine, total)
 
+    def test_object_catalog_fields_and_legacy_metadata_survive_edit(self):
+        with self.assertRaises(ValueError):
+            inventory.add_object_category({"name": "tool"})
+        inventory.add_object_category({"name": "Instrument"})
+        self.assertIn("Instrument", inventory.list_object_categories())
+        with self.assertRaises(ValueError):
+            inventory.add_object_category({"name": "instrument"})
+
+        inventory.add_object({
+            "object_id": "OBJ-NEW", "name": "Tryckgivare", "category": "Instrument",
+            "article_number": "VOL-123", "brand": "Pentronic", "model": "100-3",
+            "measurement_range": "20-100 C", "unit_price": "1458.5", "location": "Våning 8, blått skåp 1",
+            "total_quantity": 2, "available_quantity": 2, "min_quantity": 0,
+            "tornado_id": "Legacy store", "door_id": "Legacy door", "device": "Legacy device",
+            "belongs_to": "Legacy relation", "last_changed": "2026-01-01", "search_words": "legacy words",
+        })
+        inventory.update_object({
+            "object_id": "OBJ-NEW", "name": "Tryckgivare", "category": "Instrument",
+            "article_number": "VOL-123", "location": "Våning 8, blått skåp 1",
+            "total_quantity": 2, "available_quantity": 2, "min_quantity": 0,
+        })
+
+        item = database.row("SELECT * FROM objects WHERE object_id='OBJ-NEW'")
+        self.assertEqual((item["brand"], item["model"], item["measurement_range"], item["unit_price"]),
+                         ("Pentronic", "100-3", "20-100 C", "1458.50"))
+        self.assertEqual((item["tornado_id"], item["door_id"], item["device"], item["belongs_to"],
+                          item["last_changed"], item["search_words"]),
+                         ("Legacy store", "Legacy door", "Legacy device", "Legacy relation",
+                          "2026-01-01", "legacy words"))
+        self.assertEqual(inventory.search_objects("Pentronic")[0]["model"], "100-3")
+        self.assertEqual(inventory.list_objects(search="100-3")[0]["object_id"], "OBJ-NEW")
+        with self.assertRaises(ValueError):
+            inventory.add_object({
+                "object_id": "OBJ-BAD", "name": "Unknown", "category": "Not listed",
+                "location": "Shelf", "total_quantity": 1, "available_quantity": 1,
+            })
+        with self.assertRaises(ValueError):
+            inventory.add_object({
+                "object_id": "OBJ-PRICE", "name": "Invalid price", "category": "Instrument",
+                "location": "Shelf", "unit_price": "-1", "total_quantity": 1, "available_quantity": 1,
+            })
+
     def test_partial_damage_summary_and_legacy_remaining(self):
         result = loans.return_item(self.payload(3, 1))
         self.assertEqual((result["returned_quantity"], result["damaged_quantity"], result["remaining_quantity"]), (3, 1, 2))
@@ -169,6 +211,8 @@ class PartialReturnsTest(unittest.TestCase):
         item = next(item for item in loans.list_loan_requests() if item["request_id"] == request)
         self.assertEqual((item["returned_quantity"], item["remaining_quantity"], item["unresolved_damage_quantity"]), (2, 2, 1))
         self.assertEqual(item["unresolved_damage_description"], "Broken housing")
+        damage = next(item for item in loans.list_damaged_returns() if item["object_id"] == "B")
+        self.assertEqual(damage["loan_request_id"], request)
         self.assertEqual(item["stocking_blocked"], 1)
         self.assertEqual(database.row("SELECT status FROM loan_requests WHERE request_id=?", (request,))["status"], "loaned")
         loans.update_loan_request_group_status({"request_group_id": request, "status": "returned"})

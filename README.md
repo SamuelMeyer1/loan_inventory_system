@@ -2,6 +2,10 @@
 
 Lokal prototyp med Python-backend, SQLite och HTML/CSS/JavaScript-frontend.
 
+Hårdvaruadaptrar och verktyg ligger i `hardware/` (RFID och Brother); externa
+protokolltransporter ligger i `software/communications/` (SMTP och Teams).
+Notifieringsregler, databaskoppling och användarbehörighet ligger kvar i backend.
+
 Backend använder endast Python standardbibliotek:
 
 - `http.server` för lokal HTTP-server

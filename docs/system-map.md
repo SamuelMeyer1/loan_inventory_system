@@ -14,14 +14,16 @@ flowchart LR
     server[Python HTTP Server\nbackend/server.py]
     services[Service Layer\nbackend/services/*.py]
     db[(SQLite Database\ndata/inventory.db)]
-    external[External Notifications\nEmail / Teams]
+    hardware[Hardware adapters\nRFID / Brother tools]
+    software[Software transports\nSMTP / Teams; future SMS / System Q]
 
     user --> browser
     browser --> js
     js -->|HTTP /api requests| server
     server -->|routes requests| services
     services -->|read/write| db
-    services -->|optional messages| external
+    services -->|hardware calls| hardware
+    services -->|optional messages| software
     services -->|JSON response| server
     server --> js
     js --> browser
@@ -53,7 +55,7 @@ flowchart TB
         loans[loans.py\ncheckout, return, requests,\nconsumable reports, events]
         users[users.py\nusers and groups]
         stats[stats.py\ndashboard/statistics]
-        notifications[notifications.py\nsettings, reminders,\nemail, Teams]
+        notifications[notifications.py\nsettings, reminders, recipients]
         common[common.py\nshared helpers]
         init[__init__.py\nexports service functions]
     end
@@ -75,6 +77,9 @@ flowchart TB
     users --> database
     stats --> database
     notifications --> database
+    notifications --> smtp[software/communications\nSMTP and Teams transport]
+    smartcard[backend/services/smartcard.py\nUID-to-user adapter] --> rfid[hardware/rfid/reader.py\nPC/SC reader]
+    labeltool[hardware/brother_p750w\nPDF label preview] --> labeldriver[hardware/brother_p750w/drivers\nseparate Windows driver]
     seed --> database
 
     html --> app

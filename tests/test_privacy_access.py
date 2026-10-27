@@ -56,6 +56,14 @@ class PrivacyAccessTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.call(path)[0], 401)
         self.assertEqual(self.call("/api/privacy/notice")[0], 200)
+
+    def test_object_categories_are_listed_and_admin_managed(self):
+        status, payload, _ = self.call("/api/object-categories", self.operator)
+        self.assertEqual(status, 200)
+        self.assertIn("Test", payload["data"])
+        self.assertEqual(self.call("/api/object-categories", self.operator, "POST", {"name": "New"})[0], 403)
+        self.assertEqual(self.call("/api/object-categories", self.admin, "POST", {"name": "New"})[0], 200)
+        self.assertEqual(self.call("/api/object-categories", self.admin, "POST", {"name": "new"})[0], 400)
         self.assertFalse(privacy.policy()["configured"])
 
     def test_operator_sees_only_self_and_cannot_get_private_settings(self):
@@ -295,7 +303,7 @@ class PrivacyAccessTest(unittest.TestCase):
 
     def test_smtp_transport_requires_tls(self):
         settings = {"smtp_enabled": "1", "smtp_host": "smtp.example.invalid", "smtp_port": "587", "smtp_from_address": "test@example.invalid", "smtp_use_tls": "0", "notification_simulation_enabled": "0"}
-        with patch.dict("os.environ", {"LOAN_ENABLE_NOTIFICATIONS": "1"}), patch.object(notifications.smtplib, "SMTP") as smtp:
+        with patch.dict("os.environ", {"LOAN_ENABLE_NOTIFICATIONS": "1"}), patch("software.communications.smtp.smtplib.SMTP") as smtp:
             with self.assertRaises(ValueError):
                 notifications.email_msg("Test", "Test", ["test@example.invalid"], settings)
             smtp.assert_not_called()
@@ -413,7 +421,7 @@ class PrivacyAccessTest(unittest.TestCase):
             self.assertNotIn("private", json.dumps(payload))
 
     def test_external_notifications_blocked_without_opening_network(self):
-        with patch.dict("os.environ", {"LOAN_ENABLE_NOTIFICATIONS": "0"}), patch.object(notifications.smtplib, "SMTP") as smtp:
+        with patch.dict("os.environ", {"LOAN_ENABLE_NOTIFICATIONS": "0"}), patch("software.communications.smtp.smtplib.SMTP") as smtp:
             for send in (notifications.email_msg, notifications.team_msg):
                 with self.assertRaises(ValueError):
                     send("Test", "Fiktivt innehåll", ["test@example.invalid"])

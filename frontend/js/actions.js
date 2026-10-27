@@ -803,21 +803,12 @@ async function saveObject(event) {
         object_id: $("#newObjectId").value,
         name: $("#newObjectName").value,
         category: $("#newObjectCategory").value,
-        item_type: $("#newObjectType").value,
-        description: $("#newObjectDescription").value,
         article_number: $("#newObjectArticle").value,
-        supplier_article_number: $("#newObjectSupplierArticle").value,
+        brand: $("#newObjectBrand").value,
+        model: $("#newObjectModel").value,
+        measurement_range: $("#newObjectMeasurementRange").value,
+        unit_price: $("#newObjectUnitPrice").value,
         location: $("#newObjectLocation").value,
-        storage_location_2: $("#newObjectStorageLocation2").value,
-        tornado_id: $("#newObjectTornado").value,
-        door_id: $("#newObjectDoor").value,
-        belongs_to_instrument: $("#newObjectBelongsToInstrument").value,
-        device: $("#newObjectDevice").value,
-        belongs_to: $("#newObjectBelongsTo").value,
-        last_changed: $("#newObjectLastChanged").value,
-        search_words: $("#newObjectSearchWords").value,
-        tray_for: $("#newObjectTrayFor").value,
-        lift_tray: $("#newObjectLiftTray").value,
         total_quantity: Number($("#newObjectTotal").value),
         available_quantity: Number($("#newObjectAvailable").value),
         min_quantity: Number($("#newObjectMin").value),
@@ -835,6 +826,24 @@ async function saveObject(event) {
   }
 }
 
+async function addObjectCategory(event) {
+  event.preventDefault();
+  const name = $("#objectCategoryName").value.trim();
+  try {
+    const category = await api("/api/object-categories", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    state.objectCategories = [...state.objectCategories, category.name];
+    renderFilters();
+    renderObjectCategorySelect(category.name);
+    $("#objectCategoryDialog").close();
+    $("#objectCategoryForm").reset();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function startEditObject(objectId) {
   if (state.role === "operator") return;
   const item = state.objects.find((objectItem) => objectItem.object_id === objectId);
@@ -847,22 +856,14 @@ function startEditObject(objectId) {
   $("#newObjectId").value = item.object_id;
   $("#newObjectId").readOnly = true;
   $("#newObjectName").value = item.name;
+  renderObjectCategorySelect(item.category);
   $("#newObjectCategory").value = item.category;
-  $("#newObjectType").value = item.item_type || "";
-  $("#newObjectDescription").value = item.description || "";
+  $("#newObjectBrand").value = item.brand || "";
+  $("#newObjectModel").value = item.model || "";
+  $("#newObjectMeasurementRange").value = item.measurement_range || "";
+  $("#newObjectUnitPrice").value = item.unit_price || "";
   $("#newObjectArticle").value = item.article_number || "";
-  $("#newObjectSupplierArticle").value = item.supplier_article_number || "";
   $("#newObjectLocation").value = item.location;
-  $("#newObjectStorageLocation2").value = item.storage_location_2 || "";
-  $("#newObjectTornado").value = item.tornado_id;
-  $("#newObjectDoor").value = item.door_id;
-  $("#newObjectBelongsToInstrument").value = item.belongs_to_instrument || "";
-  $("#newObjectDevice").value = item.device || "";
-  $("#newObjectBelongsTo").value = item.belongs_to || "";
-  $("#newObjectLastChanged").value = item.last_changed || "";
-  $("#newObjectSearchWords").value = item.search_words || "";
-  $("#newObjectTrayFor").value = item.tray_for || "";
-  $("#newObjectLiftTray").value = item.lift_tray || "";
   $("#newObjectTotal").value = item.total_quantity;
   $("#newObjectAvailable").value = item.available_quantity;
   $("#newObjectMin").value = item.min_quantity;

@@ -33,7 +33,7 @@
           <p class="privacy-contact-inline">Frågor? Kontakta Olof Samuelsson: <a href="mailto:olof.samuelsson@volvo.com">olof.samuelsson@volvo.com</a></p>
           <a href="/privacy.html">Läs mer om dataskydd / Privacy information</a>
         </details>
-        <span class="login-version">Version 1.18.3</span>
+        <span class="login-version">Version 1.18.8</span>
       </div>
     </section>
     <div class="app-shell" hidden>
@@ -408,24 +408,11 @@
         <section class="view" id="objectsView">
           <h1>Objekt</h1>
           <div class="filters">
-            <input id="objectSearch" placeholder="Sök på objekt, artikelnummer, leverantörsartikel, sökord eller plats">
+            <input id="objectSearch" placeholder="Sök objekt, VOLVO-ID, fabrikat, modell eller placering">
             <select id="categoryFilter"></select>
             <select id="statusFilter"></select>
           </div>
-          <div class="table-wrap">
-            <table class="objects-table">
-              <thead>
-                <tr>
-                  <th>Bild</th><th>Kategori</th><th>Typ</th><th>Beteckning</th><th>VOLVO-ID/Artikelnummer</th>
-                  <th>Namn</th><th>Leverantörens art.</th><th>Saldo</th><th>Beställningspunkt</th>
-                  <th>Lagerplats</th><th>Förråd</th><th>Tillhör instrument</th><th>Device</th>
-                  <th>Tillhör</th><th>Senast ändrad</th><th>Sök ord</th><th>Ligger på bricka för</th>
-                  <th>Lagerplats 2</th><th>Hissbricka</th><th>Status</th><th></th>
-                </tr>
-              </thead>
-              <tbody id="objectsBody"></tbody>
-            </table>
-          </div>
+          <div class="objects-grid" id="objectsGrid"></div>
         </section>
 
         <section class="view" id="loansView">
@@ -485,102 +472,74 @@
               <h2 id="objectFormTitle">Lägg till objekt</h2>
               <div class="admin-form-grid">
                 <label>
-                  Objekt-ID
+                  Internt Objekt-ID
                   <input id="newObjectId" placeholder="OBJ-1009" autocomplete="off" required>
                 </label>
                 <label>
-                  Namn
+                  Benämning
                   <input id="newObjectName" placeholder="Tryckgivare 0-16 bar" autocomplete="off" required>
                 </label>
-                <label>
+                <label class="category-picker">
                   Kategori
-                  <input id="newObjectCategory" placeholder="Sensor" autocomplete="off" required>
+                  <span class="category-picker-controls">
+                    <select id="newObjectCategory" required></select>
+                    <button class="secondary-button" id="addObjectCategoryButton" type="button">Lägg till kategori</button>
+                  </span>
                 </label>
                 <label>
-                  Typ
-                  <input id="newObjectType" placeholder="Datalogger" autocomplete="off">
+                  VOLVO-ID
+                  <input id="newObjectArticle" placeholder="Redigerbart artikel-ID" autocomplete="off">
                 </label>
                 <label>
-                  Beteckning
-                  <input id="newObjectDescription" placeholder="Tryckgivare 0-16 bar" autocomplete="off">
+                  Fabrikat
+                  <input id="newObjectBrand" placeholder="Pentronic" autocomplete="off">
                 </label>
                 <label>
-                  VOLVO-ID/Artikelnummer
-                  <input id="newObjectArticle" placeholder="PRS-016B" autocomplete="off">
+                  Modell
+                  <input id="newObjectModel" placeholder="100-3" autocomplete="off">
                 </label>
                 <label>
-                  Leverantörens artikelnummer
-                  <input id="newObjectSupplierArticle" placeholder="Leverantörens art.nr" autocomplete="off">
+                  Mätområde
+                  <input id="newObjectMeasurementRange" placeholder="20 °C–100 °C" autocomplete="off">
                 </label>
                 <label>
-                  Plats
-                  <input id="newObjectLocation" placeholder="Tornado C / Fack 8" autocomplete="off" required>
+                  Styckpris (kr)
+                  <input id="newObjectUnitPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="1458,00">
                 </label>
-                <label>
-                  Lagerplats 2
-                  <input id="newObjectStorageLocation2" placeholder="H1001" autocomplete="off">
-                </label>
-                <label>
-                  Förråd
-                  <input id="newObjectTornado" placeholder="Tornado C" autocomplete="off" required>
-                </label>
-                <label>
-                  Hissbricka/dörr/fack
-                  <input id="newObjectDoor" placeholder="8" autocomplete="off" required>
-                </label>
-                <label>
-                  Tillhör instrument
-                  <input id="newObjectBelongsToInstrument" autocomplete="off">
-                </label>
-                <label>
-                  Device
-                  <input id="newObjectDevice" autocomplete="off">
-                </label>
-                <label>
-                  Tillhör
-                  <input id="newObjectBelongsTo" autocomplete="off">
-                </label>
-                <label>
-                  Senast ändrad
-                  <input id="newObjectLastChanged" type="date">
-                </label>
-                <label>
-                  Sök ord
-                  <input id="newObjectSearchWords" autocomplete="off">
-                </label>
-                <label>
-                  Ligger på bricka för
-                  <input id="newObjectTrayFor" autocomplete="off">
-                </label>
-                <label>
-                  Hissbricka
-                  <input id="newObjectLiftTray" autocomplete="off">
-                </label>
-                <label>
-                  Totalt antal
-                  <select id="newObjectTotal" data-number-select data-min="0" data-max="100" data-default="1" required></select>
-                </label>
-                <label>
-                  Tillgängligt antal
-                  <select id="newObjectAvailable" data-number-select data-min="0" data-max="100" data-default="1" required></select>
-                </label>
-                <label>
-                  Min-nivå
-                  <select id="newObjectMin" data-number-select data-min="0" data-max="50" data-default="1" required></select>
+                <label class="object-location-field">
+                  Placering
+                  <input id="newObjectLocation" placeholder="Hiss, våning 8, blått skåp 1" autocomplete="off" required>
                 </label>
               </div>
+              <details class="object-stock-settings">
+                <summary>Lagerinställningar</summary>
+                <div class="admin-form-grid">
+                  <label>
+                    Totalt antal
+                    <select id="newObjectTotal" data-number-select data-min="0" data-max="100" data-default="1" required></select>
+                  </label>
+                  <label>
+                    Tillgängligt antal
+                    <select id="newObjectAvailable" data-number-select data-min="0" data-max="100" data-default="1" required></select>
+                  </label>
+                  <label>
+                    Beställningspunkt
+                    <select id="newObjectMin" data-number-select data-min="0" data-max="50" data-default="1" required></select>
+                  </label>
+                  <label class="checkbox-row">
+                    <input id="newObjectConsumable" type="checkbox">
+                    Förbrukningsvara, ej utlåning
+                  </label>
+                </div>
+              </details>
               <label class="image-upload">
                 Bild
                 <input id="newObjectImage" type="file" accept="image/*">
-                <span>Välj en bild. Den visas också för andra objekt med samma benämning.</span>
+                <span>Valfri bild.</span>
               </label>
               <div class="image-preview" id="newObjectImagePreview">
                 <span>Ingen bild vald</span>
               </div>
-              <label class="checkbox-row">
-                <input id="newObjectConsumable" type="checkbox">
-                Förbrukningsvara, ej utlåning
-              </label>
               <label class="checkbox-row">
                 <input id="removeObjectImage" type="checkbox">
                 Ta bort befintlig bild
@@ -590,6 +549,20 @@
                 <button class="primary-button" id="saveObjectButton" type="submit">Spara objekt</button>
               </div>
             </form>
+
+            <dialog class="job-return-dialog object-category-dialog" id="objectCategoryDialog" aria-labelledby="objectCategoryTitle">
+              <form id="objectCategoryForm">
+                <h2 id="objectCategoryTitle">Lägg till objektkategori</h2>
+                <label>
+                  Kategorinamn
+                  <input id="objectCategoryName" maxlength="80" autocomplete="off" required>
+                </label>
+                <div class="form-actions">
+                  <button class="secondary-button" id="cancelObjectCategoryButton" type="button">Avbryt</button>
+                  <button class="primary-button" type="submit">Spara kategori</button>
+                </div>
+              </form>
+            </dialog>
 
             <section class="admin-card admin-settings-panel" data-admin-panel="create-user">
               <h2>Lägg till användare</h2>

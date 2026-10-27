@@ -2471,46 +2471,151 @@ th {
   font-weight: 700;
 }
 
-.objects-table {
-  min-width: 2600px;
+.objects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 245px), 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
-.objects-table th,
-.objects-table td {
-  max-width: 260px;
+.object-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
-.objects-table th:nth-child(2),
-.objects-table td:nth-child(2) {
-  min-width: 220px;
+.object-card-low {
+  border-color: #d6a65f;
 }
 
-.objects-table th:nth-child(3),
-.objects-table td:nth-child(3) {
-  min-width: 180px;
+.object-card-visual {
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #edf1f3;
+  color: #63717a;
+  font-size: 16px;
+  font-weight: 700;
 }
 
-.objects-table th:nth-child(4),
-.objects-table td:nth-child(4),
-.objects-table th:nth-child(6),
-.objects-table td:nth-child(6) {
-  min-width: 260px;
+.object-card-visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-.objects-table th:nth-child(5),
-.objects-table td:nth-child(5),
-.objects-table th:nth-child(7),
-.objects-table td:nth-child(7) {
-  min-width: 190px;
+.object-card-no-image {
+  aspect-ratio: auto;
+  min-height: 54px;
 }
 
-.objects-table th:nth-child(10),
-.objects-table td:nth-child(10),
-.objects-table th:nth-child(12),
-.objects-table td:nth-child(12),
-.objects-table th:nth-child(16),
-.objects-table td:nth-child(16) {
-  min-width: 210px;
+.object-card-content {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.object-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.object-category,
+.object-card-id {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.object-card-content h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.object-card-id {
+  margin: 0;
+  font-weight: 650;
+}
+
+.object-card-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.object-card-fields > div {
+  min-width: 0;
+}
+
+.object-card-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.object-card-fields dd {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.object-card-details summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.object-card-details dl {
+  grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  margin-top: 10px;
+}
+
+.object-card-details dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.object-card-details dd {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.object-card-actions,
+.category-picker-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-picker-controls select {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.object-stock-settings {
+  margin: 4px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.object-stock-settings summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.object-stock-settings .admin-form-grid {
+  margin: 14px 0 0;
+}
+
+.object-category-dialog {
+  width: min(480px, calc(100% - 32px));
 }
 
 tr.low {

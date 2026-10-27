@@ -1,7 +1,7 @@
 # Uppdates
 
-Nuvarande version: V1.18.3
-Senast uppdaterad: 2026-10-26
+Nuvarande version: V1.18.9
+Senast uppdaterad: 2026-10-27
 
 Den har filen anvands som projektlogg. Vid varje update:
 
@@ -14,6 +14,49 @@ Versionering:
 - Patch, t.ex. V1.0.0 -> V1.0.1: bugfixar, text, mindre UI-forbattringar.
 - Minor, t.ex. V1.0.1 -> V1.1.0: ny funktion eller nytt arbetsflode.
 - Major, t.ex. V1.1.0 -> V2.0.0: stor ombyggnad eller brytande forandring.
+
+## V1.18.9 - 2026-10-27
+
+- Kameran kan startas utifrån via scan_once och lämna tillbaka ett ID som sträng; kameran stängs efter avläsningen.
+- Nytt --once-läge för att testa samma flöde i terminalen. Avbrott ger inget ID och flera synliga koder väljs inte godtyckligt.
+- Befintligt kontinuerligt kameratest finns kvar. Huvudprogrammets main.py är ännu inte inkopplat.
+
+## V1.18.8 - 2026-10-26
+
+- Fristående Razer Kiyo-kameratest i hardware/razer_camera med livebild och Code 128-avläsning till terminalen.
+- Kameraindex kan väljas; upprepade avläsningar filtreras och kameran släpps vid avslut.
+- Huvudprogrammets utlåningsflöde är inte inkopplat. Fysisk kamera och etiketter behöver provas på plats.
+
+## V1.18.7 - 2026-10-26
+
+- Objektkort visar exemplar-VOLVO-ID direkt när ett objekt har ett ID; grupper med flera ID:n visar en kompakt sammanfattning och full lista under detaljer.
+- SharePoint-import till sparad simulering har torrkörning, backup, exakta bildmatchningar och skydd mot dubblettimport.
+- 128 SharePoint-objekt importerades additivt i den sparade simuleringen; befintliga 8 demoobjekt finns kvar.
+- 112 bilder matchades, 12 saknar fil i ZIP. Två felaktigt delade listor korrigerades till saldo 1 och VOLVO-ID 004712/004713.
+- 143 Python-tester och 5 JavaScript-testsviter godkända. Ny Setup är inte byggd.
+
+## V1.18.6 - 2026-10-26
+
+- Ny hardware-mapp med fristående PDF-verktyg för Brother PT-P750W.
+- Ange befintligt ID och valfritt namn; PDF visar Code 128 och ID i klartext.
+- Separat Python-funktion för framtida integration. Skrivarkoppling kommer senare.
+- Verifierat terminalflöde, PDF-layout och avkodning av Code 128 för tre ID-varianter.
+
+## V1.18.5 - 2026-10-26
+
+- Objekten visas som tydligare kort med bild, VOLVO-ID, fabrikat, modell, mätområde, placering och saldo.
+- Objektformuläret har en kategorilista med Admin-hanterad tilläggsdialog och utfällbara lagerinställningar.
+- Äldre SharePoint-metadata bevaras vid redigering och finns kvar under Visa äldre uppgifter; lager- och låneidentiteter ändras inte.
+- Objektdata kan ha styckpris och de nya produktuppgifterna kan sökas och exporteras.
+- Riktade objekt-, API-behörighets- och UI-tester godkända. Ny Setup är inte byggd.
+
+## V1.18.4 - 2026-10-26
+
+- Startfönstret har en kompakt startsida med tydliga lägen och startkontroller.
+- Databas, LAN-adress, port, demodata och uppdateringar ligger under Inställningar; serverloggen har egen flik.
+- Inställningar som inte gäller valt läge döljs. Windows-startfönstret använder programmets ikon även i aktivitetsfältet.
+- Jobbkort visar en kompakt länk till rätt felanmälan i stället för upprepad skadeinformation; lagerföringsspärren är oförändrad.
+- Riktade launcher-, skade-, jobbflödes-, serverkonfigurations- och ikontester godkända. Ny Setup är inte byggd.
 
 ## V1.18.3 - 2026-10-26
 

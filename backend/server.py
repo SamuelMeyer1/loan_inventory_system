@@ -76,6 +76,8 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "data": services.resolve_damaged_return(payload)})
             elif parsed.path == "/api/objects":
                 self.send_json({"ok": True, "data": services.add_object(payload)})
+            elif parsed.path == "/api/object-categories":
+                self.send_json({"ok": True, "data": services.add_object_category(payload)})
             elif parsed.path == "/api/users":
                 self.send_json({"ok": True, "data": services.add_user(payload)})
             elif parsed.path == "/api/users/borrow-override":
@@ -224,6 +226,8 @@ class AppHandler(AccessMixin, BaseHTTPRequestHandler):
                     ),
                 }
             )
+        elif path == "/api/object-categories":
+            self.send_json({"ok": True, "data": services.list_object_categories()})
         elif path == "/api/search":
             term = query.get("q", [""])[0]
             limit = int(query.get("limit", ["8"])[0])

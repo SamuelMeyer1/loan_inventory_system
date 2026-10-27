@@ -490,7 +490,7 @@ function renderDamagedReturns() {
   const list = $("#damagedReturnsList");
   if (!list) return;
   list.innerHTML = (state.damagedReturns || []).length ? state.damagedReturns.map((item) => `
-    <article class="damage-report">
+    <article class="damage-report" data-damage-report-id="${item.return_id}" tabindex="-1">
       <h3>${escapeHtml(item.object_name)} (${escapeHtml(item.object_id)}) — ${item.damaged_quantity}</h3>
       <p>#${item.return_id} · ${formatTime(item.returned_at)} · ${t("damage.quarantined")}</p>
       <p class="damage-description">${escapeHtml(item.damage_description)}</p>

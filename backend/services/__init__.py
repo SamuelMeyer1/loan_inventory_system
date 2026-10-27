@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from backend.services.inventory import (
     add_object,
+    add_object_category,
     delete_object,
     list_objects,
+    list_object_categories,
     search_objects,
     update_object,
 )
@@ -53,6 +55,7 @@ from backend.services.users import (
 
 __all__ = [
     "add_object",
+    "add_object_category",
     "add_user",
     "checkout",
     "close_consumable_report",
@@ -73,6 +76,7 @@ __all__ = [
     "list_groups",
     "list_loan_requests",
     "list_objects",
+    "list_object_categories",
     "list_users",
     "list_admin_notifications",
     "mark_admin_notifications_read",

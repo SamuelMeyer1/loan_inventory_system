@@ -178,28 +178,27 @@ function applyTranslations() {
     ["quickUserAlias", "field.alias"],
     ["quickUserDepartment", "field.department"],
     ["quickUserDepartmentName", "field.group"],
-    ["newObjectId", "field.instrumentId"],
-    ["newObjectName", "field.name"],
+    ["newObjectId", "field.internalId"],
+    ["newObjectName", "field.designation"],
     ["newObjectCategory", "field.category"],
-    ["newObjectType", "field.type"],
-    ["newObjectDescription", "field.description"],
-    ["newObjectArticle", "table.article"],
-    ["newObjectSupplierArticle", "table.supplierArticle"],
+    ["newObjectBrand", "field.brand"],
+    ["newObjectModel", "field.model"],
+    ["newObjectMeasurementRange", "field.measurementRange"],
+    ["newObjectUnitPrice", "field.unitPrice"],
+    ["newObjectArticle", "field.volvoId"],
     ["newObjectLocation", "field.location"],
-    ["newObjectStorageLocation2", "table.storage2"],
-    ["newObjectTornado", "table.store"],
-    ["newObjectDoor", "field.lift"],
-    ["newObjectBelongsToInstrument", "table.belongsInstrument"],
-    ["newObjectDevice", "Device"],
-    ["newObjectBelongsTo", "table.belongsTo"],
-    ["newObjectLastChanged", "table.lastChanged"],
-    ["newObjectSearchWords", "table.keywords"],
-    ["newObjectTrayFor", "table.trayFor"],
-    ["newObjectLiftTray", "table.liftTray"],
     ["newObjectTotal", "field.total"],
     ["newObjectAvailable", "table.balance"],
     ["newObjectMin", "table.reorderPoint"],
   ].forEach(([id, key]) => setLabel(id, key));
+
+  setText("#addObjectCategoryButton", "objects.addCategory");
+  setText("#objectCategoryTitle", "objects.categoryTitle");
+  setLabel("objectCategoryName", "objects.categoryName");
+  setText("#cancelObjectCategoryButton", "action.cancel");
+  setText("#objectCategoryForm button[type='submit']", "objects.saveCategory");
+  setText(".object-stock-settings summary", "objects.stockSettings");
+  renderObjectCategorySelect();
 
   setText("#returnView h1", "nav.return");
   setText("#returnInstructions", "return.instructions");
@@ -221,29 +220,6 @@ function applyTranslations() {
   setText("#consumableSubmitButton", "action.reportConsumableEmpty");
   setText("#objectsView h1", "nav.objects");
   setPlaceholder("#objectSearch", "objects.searchPlaceholder");
-  setHeaderTexts("#objectsView table", [
-    "table.image",
-    "field.category",
-    "field.type",
-    "field.description",
-    "table.article",
-    "field.name",
-    "table.supplierArticle",
-    "table.balance",
-    "table.reorderPoint",
-    "table.storage",
-    "table.store",
-    "table.belongsInstrument",
-    "Device",
-    "table.belongsTo",
-    "table.lastChanged",
-    "table.keywords",
-    "table.trayFor",
-    "table.storage2",
-    "table.liftTray",
-    "field.status",
-    "",
-  ]);
   setText("#loansView h1", "nav.loans");
   setText("#jobsView h1", "nav.jobs");
   updateJobsCollapseButton();
@@ -266,12 +242,11 @@ function applyTranslations() {
   ]);
 
 	  setText("#adminView h1", "nav.admin");
-	  setText("#objectFormTitle", "admin.addObject");
+    setText("#objectFormTitle", "admin.addObject");
+    setText("#addUserForm h2", "admin.createUser");
 	  setText("#saveObjectButton", "action.saveObject");
 	  setText("#cancelObjectEditButton", "action.cancel");
 	  setText("#cancelUserEditButton", "action.cancel");
-	  const adminCards = document.querySelectorAll("#adminView .admin-card");
-	  if (adminCards[1]?.querySelector("h2")) adminCards[1].querySelector("h2").textContent = t("admin.createUser");
 	  if (!state.editingUserId) setText("#saveUserButton", "admin.createUser");
 	  setText("#adminView .admin-subtitle", "admin.users");
 	  setHeaderTexts("#adminView .compact-table-wrap table", [

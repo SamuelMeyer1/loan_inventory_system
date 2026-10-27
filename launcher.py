@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from http.client import HTTPException
 from queue import Empty, Queue
@@ -19,7 +20,7 @@ from urllib.request import ProxyHandler, build_opener
 
 from app_runtime import default_database, is_frozen, storage_directory
 from app_version import RELEASES_URL, VERSION
-from app_icon import icon_png
+from app_icon import icon_ico, icon_png
 from app_updates import UpdateCheck, check_for_updates
 from simulation_store import prepare_simulation, reset_simulation, simulation_path
 
@@ -102,10 +103,16 @@ class Launcher:
         self.tk = tk
         self.root = tk.Tk()
         self.root.title(f"Starta Loan Inventory · {VERSION}")
-        self.root.geometry("660x680")
-        self.root.minsize(600, 650)
+        self.root.geometry("500x340")
+        self.root.minsize(430, 300)
         self.icon = tk.PhotoImage(data=icon_png(32), format="png")
         self.root.iconphoto(True, self.icon)
+        self.icon_file: Path | None = None
+        if os.name == "nt":
+            self.icon_file = Path(tempfile.gettempdir()) / f"loan-inventory-{os.getpid()}-{uuid.uuid4().hex}.ico"
+            self.icon_file.write_bytes(icon_ico())
+            self.root.iconbitmap(default=str(self.icon_file))
+        self.root.bind("<Destroy>", self.cleanup_icon, add="+")
         self.storage = storage_directory()
         self.process: subprocess.Popen | None = None
         self.log_path: Path | None = None
@@ -129,55 +136,77 @@ class Launcher:
         self.port = tk.StringVar(value="8000")
         self.status = tk.StringVar(value="Stoppad")
         self.update_status = tk.StringVar(value="Uppdateringar kontrolleras vid start.")
-        frame = ttk.Frame(self.root, padding=20)
-        frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Loan Inventory", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        updates = ttk.Frame(frame)
-        updates.pack(fill="x", pady=(6, 0))
-        self.check_updates_button = ttk.Button(updates, text="Sök uppdateringar", command=self.check_updates)
-        self.check_updates_button.pack(side="left")
-        self.updates_button = ttk.Button(updates, text="Versionssida", command=self.open_releases)
-        self.updates_button.pack(side="left", padx=8)
-        ttk.Label(frame, textvariable=self.update_status, wraplength=550).pack(anchor="w")
-        modes = ttk.Frame(frame)
+        self.tabs = ttk.Notebook(self.root)
+        self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
+        self.start_tab = ttk.Frame(self.tabs, padding=16)
+        self.settings_tab = ttk.Frame(self.tabs, padding=16)
+        self.log_tab = ttk.Frame(self.tabs, padding=10)
+        self.tabs.add(self.start_tab, text="Start")
+        self.tabs.add(self.settings_tab, text="Inställningar")
+        self.tabs.add(self.log_tab, text="Serverlogg")
+
+        ttk.Label(self.start_tab, text="Loan Inventory", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        modes = ttk.Frame(self.start_tab)
         modes.pack(fill="x", pady=(12, 8))
         for value, label in MODES.items():
             ttk.Radiobutton(modes, text=label, value=value, variable=self.mode,
-                            command=self.update_fields).pack(side="left", padx=(0, 24))
-        ttk.Label(frame, text="Databas").pack(anchor="w", pady=(4, 3))
-        self.database_entry = ttk.Entry(frame, textvariable=self.database)
-        self.database_entry.pack(fill="x")
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill="x", pady=5)
-        self.browse_button = ttk.Button(buttons, text="Bläddra...", command=self.browse)
-        self.browse_button.pack(side="left")
-        self.new_button = ttk.Button(buttons, text="Ny databas...", command=self.new_database)
-        self.new_button.pack(side="left", padx=8)
-        self.reset_simulation_button = ttk.Button(
-            buttons, text="Återställ demodata...", command=self.reset_demo)
-        self.reset_simulation_button.pack(side="right")
-        fields = ttk.Frame(frame)
-        fields.pack(fill="x", pady=6)
-        ttk.Label(fields, text="LAN-adress").grid(row=0, column=0, sticky="w")
-        ttk.Label(fields, text="Port").grid(row=0, column=1, sticky="w", padx=12)
-        self.host_entry = ttk.Entry(fields, textvariable=self.host, width=33)
-        self.host_entry.grid(row=1, column=0, sticky="ew")
-        self.port_entry = ttk.Entry(fields, textvariable=self.port, width=9)
-        self.port_entry.grid(row=1, column=1, padx=12)
-        self.help_text = ttk.Label(frame, wraplength=570, foreground="#345a70")
-        self.help_text.pack(fill="x", pady=8)
-        controls = ttk.Frame(frame)
-        controls.pack(fill="x", pady=(4, 10))
+                            command=self.update_fields).pack(side="left", padx=(0, 16))
+        self.help_text = ttk.Label(self.start_tab, wraplength=420, foreground="#345a70")
+        self.help_text.pack(fill="x", pady=(2, 12))
+        controls = ttk.Frame(self.start_tab)
+        controls.pack(fill="x", pady=(2, 8))
         self.start_button = ttk.Button(controls, text="Starta", command=self.start)
         self.start_button.pack(side="left")
         self.stop_button = ttk.Button(controls, text="Stoppa", command=self.stop, state="disabled")
         self.stop_button.pack(side="left", padx=8)
         self.open_button = ttk.Button(controls, text="Öppna appen", command=self.open_browser, state="disabled")
         self.open_button.pack(side="right")
-        ttk.Separator(frame).pack(fill="x", pady=(0, 8))
-        ttk.Label(frame, textvariable=self.status, wraplength=570).pack(fill="x", pady=(0, 6))
-        ttk.Label(frame, text="Serverlogg · HTTP-status och behandlingstid (ms)").pack(anchor="w", pady=(0, 4))
-        self.console = ScrolledText(frame, height=10, wrap="word", font=("Consolas", 10),
+        ttk.Separator(self.start_tab).pack(fill="x", pady=(0, 8))
+        ttk.Label(self.start_tab, textvariable=self.status, wraplength=420).pack(fill="x")
+
+        ttk.Label(self.settings_tab, text="Databas").grid(row=0, column=0, sticky="w", pady=(0, 3))
+        self.database_section = ttk.Frame(self.settings_tab)
+        self.database_section.grid(row=1, column=0, sticky="ew")
+        self.settings_tab.columnconfigure(0, weight=1)
+        self.database_entry = ttk.Entry(self.database_section, textvariable=self.database)
+        self.database_entry.pack(fill="x")
+        buttons = ttk.Frame(self.database_section)
+        buttons.pack(fill="x", pady=5)
+        self.browse_button = ttk.Button(buttons, text="Bläddra...", command=self.browse)
+        self.browse_button.pack(side="left")
+        self.new_button = ttk.Button(buttons, text="Ny databas...", command=self.new_database)
+        self.new_button.pack(side="left", padx=8)
+
+        self.network_section = ttk.Frame(self.settings_tab)
+        self.network_section.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        self.network_section.columnconfigure(0, weight=1)
+        ttk.Label(self.network_section, text="LAN-adress").grid(row=0, column=0, sticky="w")
+        self.host_entry = ttk.Entry(self.network_section, textvariable=self.host)
+        self.host_entry.grid(row=1, column=0, sticky="ew")
+
+        self.port_section = ttk.Frame(self.settings_tab)
+        self.port_section.grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(self.port_section, text="Port").pack(anchor="w")
+        self.port_entry = ttk.Entry(self.port_section, textvariable=self.port, width=9)
+        self.port_entry.pack(anchor="w")
+
+        self.simulation_section = ttk.Frame(self.settings_tab)
+        self.simulation_section.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        self.simulation_info = ttk.Label(self.simulation_section, wraplength=420)
+        self.simulation_info.pack(anchor="w", pady=(0, 4))
+        self.reset_simulation_button = ttk.Button(
+            self.simulation_section, text="Återställ demodata...", command=self.reset_demo)
+        self.reset_simulation_button.pack(anchor="w")
+
+        updates = ttk.Frame(self.settings_tab)
+        updates.grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        self.check_updates_button = ttk.Button(updates, text="Sök uppdateringar", command=self.check_updates)
+        self.check_updates_button.pack(side="left")
+        self.updates_button = ttk.Button(updates, text="Versionssida", command=self.open_releases)
+        self.updates_button.pack(side="left", padx=8)
+        ttk.Label(self.settings_tab, textvariable=self.update_status, wraplength=420).grid(
+            row=6, column=0, sticky="ew", pady=(6, 0))
+        self.console = ScrolledText(self.log_tab, height=10, wrap="word", font=("Consolas", 10),
                                     background="#15212b", foreground="#d9e7ef",
                                     insertbackground="#d9e7ef", relief="flat", state="disabled")
         self.console.pack(fill="both", expand=True)
@@ -188,6 +217,13 @@ class Launcher:
             self.update_status.set("Automatisk uppdateringskontroll avstängd för denna start.")
         else:
             self.update_check_id = self.root.after(200, self.check_updates)
+
+    def cleanup_icon(self, event=None) -> None:
+        if event is not None and event.widget is not self.root:
+            return
+        if self.icon_file is not None:
+            self.icon_file.unlink(missing_ok=True)
+            self.icon_file = None
 
     def report_error(self, error: Exception | str) -> None:
         from tkinter import messagebox
@@ -225,16 +261,27 @@ class Launcher:
 
     def update_fields(self) -> None:
         mode = self.mode.get()
-        for widget in (self.database_entry, self.browse_button, self.new_button):
-            widget.configure(state="normal" if mode in ("local", "lan") else "disabled")
-        self.host_entry.configure(state="normal" if mode == "lan" else "disabled")
+        if mode in ("local", "lan"):
+            self.database_section.grid()
+        else:
+            self.database_section.grid_remove()
+        if mode == "lan":
+            self.network_section.grid()
+        else:
+            self.network_section.grid_remove()
+        if mode == "simulation":
+            self.simulation_section.grid()
+        else:
+            self.simulation_section.grid_remove()
         self.reset_simulation_button.configure(
             state="normal" if mode == "simulation" and self.process is None else "disabled")
         self.help_text.configure(text={
-            "simulation": f"Sparad demo · Teständringar finns kvar · Inga utskick/kortläsare · admin/admin\n{simulation_path(self.storage)}",
-            "local": "Endast denna dator · Vald databas · Inga externa utskick",
-            "lan": "Delas på nätverket · Endast fejkdata · Inga externa utskick",
+            "simulation": "Separat demo med sparade teständringar. Inga utskick eller kortläsare.",
+            "local": "Servern körs bara på den här datorn.",
+            "lan": "Delas på nätverket. Använd endast fejkdata och godkänd nätverksåtkomst.",
         }[mode])
+        self.simulation_info.configure(
+            text=f"Sparad demo · admin/admin\n{simulation_path(self.storage)}")
 
     def reset_demo(self) -> None:
         from tkinter import messagebox

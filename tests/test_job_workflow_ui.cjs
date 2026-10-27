@@ -114,14 +114,23 @@ async function main() {
     unresolved_damage_quantity: 1, unresolved_damage_description: "<broken housing>", stocking_blocked: 1 };
   const damagedHtml = context.renderJobGroup({ id: 10, status: "returned", items: [damagedJob] });
   assert.match(damagedHtml, /job-warning-icon/);
-  assert.match(damagedHtml, /Skadade exemplar: 1/);
-  assert.match(damagedHtml, /&lt;broken housing>/);
+  assert.match(damagedHtml, /Till felanmälan/);
+  assert.match(damagedHtml, /data-open-damage-report="10" data-object-id="A"/);
+  assert.doesNotMatch(damagedHtml, /&lt;broken housing>/);
   assert.match(damagedHtml, /data-job-status="stocked" disabled/);
   assert.doesNotMatch(context.renderJobGroupItem({ ...damagedJob, unresolved_damage_quantity: 0, stocking_blocked: 0 }), /job-warning-text/);
   assert.match(context.renderJobGroupItem({ ...jobs[0], returned_quantity: 4, remaining_quantity: 11 }), /11 exemplar återstår/);
   state.language = "en";
-  assert.match(context.renderJobGroupItem(damagedJob), /Damaged units: 1/);
+  assert.match(context.renderJobGroupItem(damagedJob), /Open damage report/);
   state.language = "sv";
+
+  const navigation = [];
+  context.setView = (view) => navigation.push(view);
+  context.showAdminSettingsSection = (section) => navigation.push(section);
+  context.closeJobDetail = () => {};
+  state.damagedReturns = [{ return_id: 99, loan_request_id: 10, object_id: "A" }];
+  context.openDamageReport(10, "A");
+  assert.deepEqual(navigation, ["admin", "damage"]);
 
   const loans = [
     { loan_id: 1, loan_request_id: 10, request_group_id: 10, user_id: "test",
