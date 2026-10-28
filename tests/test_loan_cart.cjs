@@ -20,7 +20,7 @@ const context = vm.createContext({
   state: { language: 'en', loanCart: [], loans: [], objects: [
     { object_id: 'A', name: 'Same name', is_consumable: 0, available_quantity: 15, total_quantity: 15 },
     { object_id: 'B', name: 'Same name', is_consumable: 0, available_quantity: 15, total_quantity: 15 },
-  ] },
+  ], objectScanBusy: false, objectScanRequestId: null, objectScanToken: 0 },
   $: get,
   document: { querySelectorAll: (selector) => {
     if (selector === '[data-return-select]:checked') return selected;
@@ -40,6 +40,7 @@ const context = vm.createContext({
   resolveCheckoutUserId: () => 'user',
   showToast: (message) => messages.push(message),
   t: (key, values = {}) => [key, ...Object.values(values)].join(' '),
+  setTimeout: () => 1,
   statusText: (value) => value,
   confirm: () => true,
   renderCheckoutUserDetails() {}, resetAutoUserCardScanMemory() {}, setDefaultDates() {},
@@ -53,6 +54,28 @@ vm.runInContext(fs.readFileSync('frontend/js/loan-views.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync('frontend/js/actions.js', 'utf8'), context);
 
 async function main() {
+  const cameraPreference = new Map([['loanObjectScanPythonCameraIndex', '2']]);
+  context.localStorage = {
+    getItem: (key) => cameraPreference.get(key) || null,
+    setItem: (key, value) => cameraPreference.set(key, String(value)),
+  };
+  context.state.objects.push({ object_id: 'OBJ-12345', name: 'Scanned object' });
+  assert.equal(context.matchCheckoutObjectByScanCode('12345').item.object_id, 'OBJ-12345');
+  context.scannedObjectId = '';
+  vm.runInContext('selectCheckoutObject = (objectId) => { scannedObjectId = objectId; };', context);
+  const loanApi = context.api;
+  const scanRequests = [];
+  context.api = async (url, options) => {
+    scanRequests.push({ url, payload: JSON.parse(options.body) });
+    return { code: '12345', cancelled: false };
+  };
+  await context.startObjectQrScan(++context.state.objectScanToken, 'scan-test-123');
+  assert.deepEqual(scanRequests, [{
+    url: '/api/objects/scan', payload: { camera_index: 2, scan_id: 'scan-test-123' },
+  }]);
+  assert.equal(context.scannedObjectId, 'OBJ-12345', get('#objectScanStatusText').textContent);
+  context.api = loanApi;
+
   const detailsContext = vm.createContext({
     document: { querySelector: get },
     localStorage: { getItem: () => null },
@@ -168,6 +191,12 @@ async function main() {
     { object_id: 'OBJ-1001', name: 'Torque wrench', available_quantity: 4, total_quantity: 4 },
     { object_id: 'OBJ-1005', name: 'USB cable', available_quantity: 8, total_quantity: 8 },
   ];
+  context.state.objects.push({ object_id: 'OBJ-12345', name: 'Scanned item' });
+  assert.equal(context.matchCheckoutObjectByScanCode('12345').item.object_id, 'OBJ-12345');
+  assert.equal(context.matchCheckoutObjectByScanCode('OBJ-12345').item.object_id, 'OBJ-12345');
+  context.state.objects.push({ object_id: 'ALT-12345', name: 'Duplicate suffix' });
+  assert.equal(context.matchCheckoutObjectByScanCode('12345').ambiguous, true);
+  assert.equal(context.matchCheckoutObjectByScanCode('unknown').item, null);
   context.state.loanCart = [
     { object_id: 'OBJ-1005', name: 'USB cable', quantity: 1 },
     { object_id: 'OBJ-1001', name: 'Torque wrench', quantity: 3 },

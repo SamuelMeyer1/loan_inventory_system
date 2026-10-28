@@ -46,9 +46,11 @@ mobil framför kameran. Använd en tydlig, stor kod och undvik reflexer. Håll
 etiketten stilla och prova olika avstånd för skärpa. Avläsning på riktig tejp
 måste också provas när skrivaren är installerad.
 
-Framtida huvudprogram kan använda `decode_frame(frame)` och `ScanFilter`,
-eller läsa ID-rader från denna process. Kopplingen till produkt/utlåning och
-validering mot befintliga ID:n görs då av huvudprogrammet.
+Utlåningsprogrammets **Scanna objekt** startar samma `--once`-skanner i en
+separat lokal Python-process. Välj kamerans OpenCV-index under **System →
+Hårdvara** eller direkt i skannerdialogen. Den avlästa texten skickas tillbaka
+till utlåningsprogrammet och matchas mot befintliga objektnummer. Skanningen
+registrerar inte en utlåning och kamerabilder sparas inte.
 
 ## Starta utifrån och hämta ett ID
 
@@ -72,8 +74,8 @@ else:
 Q, Esc, stängt fönster eller Ctrl+C ger `None`. Kamerafel ger ett undantag
 som anroparen kan fånga. Funktionen väntar tills skanningen är klar; kör den
 från huvudtråden i ett lokalt skrivbordsprogram. Funktionen ska inte anropas
-direkt i webbserverns HTTP-tråd. Senare serverkoppling behöver en separat
-lokal kameraprocess. Visa bara en kod åt gången i detta läge; flera koder
+direkt i webbserverns HTTP-tråd. Utlåningsprogrammets API startar därför en
+separat lokal kameraprocess. Visa bara en kod åt gången i detta läge; flera koder
 accepteras inte som ett entydigt resultat. Varje nytt anrop startar en ny
 skanning utan att återanvända något gammalt ID. Ingen global variabel behövs.
 
@@ -85,4 +87,4 @@ python -m hardware.razer_camera.scanner --camera 1 --backend dshow --once
 
 ID skrivs till stdout och processen avslutas med kod 0. Avbrutet utan ID ger
 kod 2; fel ger kod 1 och feltext i stderr. Utan `--once` fortsätter det tidigare
-kontinuerliga testläget. Huvudprogrammets `main.py` är ännu inte inkopplat.
+kontinuerliga testläget. API-skanningen är begränsad till lokala serverinstanser.
